@@ -528,6 +528,5 @@ If any step fails, please report the issue in the issue tracking system.
 
 This project is licensed under the Apache License, Version 2.0. See the [`LICENSE`](LICENSE) file for details.
 
-```
 Copyright 2026 CaimanDB Contributors
 **CaimanDB** - Distributed Document Database for the Modern Era
