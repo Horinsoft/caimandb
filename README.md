@@ -118,7 +118,7 @@ The project includes build scripts for different operating systems:
 
 **Unix Systems (Linux / macOS):**
 ```bash
-./build.sh
+./scripts/build.sh
 ```
 
 **Windows:**
