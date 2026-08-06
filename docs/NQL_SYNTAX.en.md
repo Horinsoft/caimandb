@@ -1,3 +1,7 @@
+Aquí está la versión en inglés con todos los enlaces en el índice:
+
+---
+
 # CaimanDB NQL — Complete Syntax Reference (English)
 
 Other languages: [Español](./NQL_SYNTAX.es.md) · [Deutsch](./NQL_SYNTAX.de.md)
@@ -13,32 +17,32 @@ understands: full structure, every variant, and worked examples.
   this reference uses UPPERCASE for keywords by convention.
 
 ## Table of contents
-1. Database commands
-2. Block commands
-3. INSERT — all variants
-4. FIND / GET — query
-5. SEARCH — full-text
-6. UPDATE
-7. DELETE
-8. Aggregations (COUNT/SUM/AVG/...)
-9. GROUP BY
-10. ACID Transactions
-11. TURBO / BULK loading
-12. JOIN
-13. RELATE
-14. AUTORELATIONS
-15. Views
-16. EXPORT / IMPORT
-17. User management
-18. Shard management
-19. Cluster
-20. Navigation & system
-21. Filter operators
-22. Full worked example
+- [Database commands](#database-commands)
+- [Block commands](#block-commands)
+- [INSERT — all variants](#insert--all-variants)
+- [FIND / GET — query](#find--get--query)
+- [SEARCH — full-text](#search--full-text)
+- [UPDATE](#update)
+- [DELETE](#delete)
+- [Aggregations (COUNT/SUM/AVG/...)](#aggregations-countsumavg)
+- [GROUP BY](#group-by)
+- [ACID Transactions](#acid-transactions)
+- [TURBO / BULK loading](#turbo--bulk-loading)
+- [JOIN](#join)
+- [RELATE](#relate)
+- [AUTORELATIONS](#autorelations)
+- [Views](#views)
+- [EXPORT / IMPORT](#export--import)
+- [User management](#user-management)
+- [Shard management](#shard-management)
+- [Cluster](#cluster)
+- [Navigation & system](#navigation--system)
+- [Filter operators](#filter-operators)
+- [Full worked example](#full-worked-example)
 
 ---
 
-### 1. Database commands
+### Database commands
 
 ```
 CREATE DB <name>                    Create a new database
@@ -70,7 +74,7 @@ RESTORE shop FROM "shop_2026-08.bak"
 DROP DB old_shop
 ```
 
-### 2. Block commands
+### Block commands
 
 A block is CaimanDB's equivalent of a table/collection — a named, schemaless
 container of documents inside a database.
@@ -104,7 +108,7 @@ EMPTY BLOCK products                -- keeps the block, deletes its documents
 CLEAR products                      -- same as above
 ```
 
-### 3. INSERT — every variant
+### INSERT — all variants
 
 ```
 INSERT <block> [<id>] <json-object>
@@ -184,7 +188,7 @@ INSERT products GENERATE 200000 WORKERS 8     -- fixed worker count (up to 64)
   whole run (up to the same hard ceiling of 64) and the watchdog is disabled.
 - Large `GENERATE` runs automatically switch to BULK MODE for their duration.
 
-### 4. FIND / GET — query
+### FIND / GET — query
 
 ```
 FIND <block> [SELECT <field>[,<field>...] | <field> AS <alias> | COUNT(<field>) AS <alias> | <field>/<n> AS <alias>]
@@ -262,7 +266,7 @@ EXPLAIN FIND products WHERE price > 18 ORDER price:DESC LIMIT 10
 EXPLAIN SEARCH products "wireless keyboard"
 ```
 
-### 5. SEARCH — full-text
+### SEARCH — full-text
 
 ```
 SEARCH <block> "<text>" [EXACT | FUZZY]
@@ -279,7 +283,7 @@ SEARCH products "+must_include -must_exclude optional"
 SEARCH products "keyboard" WHERE price > 18 LIMIT 50 ORDER name
 ```
 
-### 6. UPDATE
+### UPDATE
 
 ```
 UPDATE <block> WHERE <condition> SET <field> = <value>[, <field2> = <value2> ...]
@@ -305,7 +309,7 @@ UPDATE ALL products SET status = "archived"
 UPDATE products WHERE status = "draft" SET status = "published", published_at = now()
 ```
 
-### 7. DELETE
+### DELETE
 
 ```
 DELETE <block> WHERE <condition>
@@ -320,7 +324,7 @@ DELETE products WHERE price < 5 OR in_stock = false
 DELETE ALL products
 ```
 
-### 8. Aggregations
+### Aggregations (COUNT/SUM/AVG/...)
 
 ```
 COUNT  <block> [WHERE <condition>]
@@ -344,7 +348,7 @@ MODE products category
 STDDEV scores value
 ```
 
-### 9. GROUP BY
+### GROUP BY
 
 ```
 GROUP <block> BY <field> [COUNT | SUM | AVG | MIN | MAX] [<field>] [WHERE <condition>]
@@ -357,7 +361,7 @@ GROUP products BY category AVG price WHERE price > 10
 GROUP logs BY level COUNT WHERE timestamp > "2024-01-01"
 ```
 
-### 10. ACID Transactions
+### ACID Transactions
 
 ```
 BEGIN [<db> <block>]
@@ -386,7 +390,7 @@ BEGIN shop products
 ROLLBACK
 ```
 
-### 11. TURBO / BULK loading
+### TURBO / BULK loading
 
 ```
 BULK MODE ON            Wider batch windows, relaxed WAL fsync policy
@@ -414,7 +418,7 @@ IMPORT products FROM FILE '/data/products.json.gz' FORMAT ARRAY
 BULK STATUS
 ```
 
-### 12. JOIN
+### JOIN
 
 ```
 JOIN <block1> WITH <block2> ON <block1>.<field> = <block2>.<field>
@@ -425,7 +429,7 @@ JOIN orders WITH customers ON orders.customer_id = customers._id
 JOIN posts WITH users ON posts.author_id = users._id
 ```
 
-### 13. RELATE
+### RELATE
 
 Register once how a block relates to other blocks (optionally in other
 databases); `FIND` then resolves the relation automatically instead of
@@ -450,7 +454,7 @@ FIND movies SELECT title,directors.name,actors.name
 FIND sales SELECT customers.name,products.name,invoices.total
 ```
 
-### 14. AUTORELATIONS (automatic, temporal self-relations)
+### AUTORELATIONS
 
 CaimanDB watches its own read access: when the same user reads the same
 document repeatedly in a short window (default: 5 reads in 10 minutes), it
@@ -504,7 +508,7 @@ SHOW AUTORELATIONS products CYCLES;
 SHOW AUTORELATIONS products BROKEN;
 ```
 
-### 15. Views
+### Views
 
 ```
 VIEW CREATE <name> AS FIND <block> WHERE <condition>
@@ -522,7 +526,7 @@ active_users
 VIEW DROP active_users
 ```
 
-### 16. Export / Import
+### EXPORT / IMPORT
 
 `EXPORT` always writes **both** a `.csv` and a `.json` file into
 `<data_root>/backups/`, using the base name you give it. Every exported
@@ -543,7 +547,7 @@ IMPORT products FROM "products_export.json"
 IMPORT products FROM "products_export.csv"
 ```
 
-### 17. User management
+### User management
 
 ```
 CREATE USER <name> PASSWORD "<pass>" [ROLE admin|readwrite|readonly]
@@ -557,7 +561,7 @@ SHOW USERS
 DROP USER analyst
 ```
 
-### 18. Shard management
+### Shard management
 
 ```
 SHARD STATUS
@@ -571,13 +575,13 @@ SHARD REBALANCE
 SHARD SCALE shop 32
 ```
 
-### 19. Cluster management
+### Cluster management
 
 ```
 CLUSTER STATUS
 ```
 
-### 20. Navigation & system
+### Navigation & system
 
 ```
 PWD               Show current path
@@ -593,7 +597,7 @@ HELP              Show help
 EXIT, QUIT        Exit the shell
 ```
 
-### 21. Filter operators (usable in every `WHERE`)
+### Filter operators (usable in every `WHERE`)
 
 | Operator | Meaning |
 |---|---|
@@ -612,7 +616,7 @@ EXIT, QUIT        Exit the shell
 | `AND` | Logical AND (default when omitted) |
 | `OR` | Logical OR |
 
-### 22. Full worked example
+### Full worked example
 
 ```sql
 CREATE DB shop
