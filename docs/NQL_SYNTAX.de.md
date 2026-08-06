@@ -15,32 +15,32 @@ Beispiele.
   verwendet konventionell GROSSBUCHSTABEN für Schlüsselwörter.
 
 ## Inhaltsverzeichnis
-1. Datenbankbefehle
-2. Blockbefehle
-3. INSERT — alle Varianten
-4. FIND / GET — Abfragen
-5. SEARCH — Volltextsuche
-6. UPDATE
-7. DELETE
-8. Aggregationen (COUNT/SUM/AVG/...)
-9. GROUP BY
-10. ACID-Transaktionen
-11. TURBO / Massenladen (BULK)
-12. JOIN
-13. RELATE
-14. AUTORELATIONS
-15. Ansichten (VIEWS)
-16. EXPORT / IMPORT
-17. Benutzerverwaltung
-18. Shard-Verwaltung
-19. Cluster
-20. Navigation & System
-21. Filteroperatoren
-22. Vollständiges Beispiel
+- [Datenbankbefehle](#datenbankbefehle)
+- [Blockbefehle](#blockbefehle)
+- [INSERT — alle Varianten](#insert--alle-varianten)
+- [FIND / GET — Abfragen](#find--get--abfragen)
+- [SEARCH — Volltextsuche](#search--volltextsuche)
+- [UPDATE](#update)
+- [DELETE](#delete)
+- [Aggregationen (COUNT/SUM/AVG/...)](#aggregationen-countsumavg)
+- [GROUP BY](#group-by)
+- [ACID-Transaktionen](#acid-transaktionen)
+- [TURBO / Massenladen (BULK)](#turbo--massenladen-bulk)
+- [JOIN](#join)
+- [RELATE](#relate)
+- [AUTORELATIONS](#autorelations)
+- [Ansichten (VIEWS)](#ansichten-views)
+- [EXPORT / IMPORT](#export--import)
+- [Benutzerverwaltung](#benutzerverwaltung)
+- [Shard-Verwaltung](#shard-verwaltung)
+- [Cluster](#cluster)
+- [Navigation & System](#navigation--system)
+- [Filteroperatoren](#filteroperatoren)
+- [Vollständiges Beispiel](#vollständiges-beispiel)
 
 ---
 
-### 1. Datenbankbefehle
+### Datenbankbefehle
 
 ```
 CREATE DB <name>                    Neue Datenbank erstellen
@@ -72,7 +72,7 @@ RESTORE shop FROM "shop_2026-08.bak"
 DROP DB alter_shop
 ```
 
-### 2. Blockbefehle
+### Blockbefehle
 
 Ein Block ist CaimanDBs Entsprechung einer Tabelle/Collection — ein
 benannter, schemafreier Container für Dokumente innerhalb einer Datenbank.
@@ -106,7 +106,7 @@ EMPTY BLOCK produkte                 -- behält den Block, löscht seine Dokumen
 CLEAR produkte                       -- dasselbe wie oben
 ```
 
-### 3. INSERT — alle Varianten
+### INSERT — alle Varianten
 
 ```
 INSERT <block> [<id>] <json-objekt>
@@ -191,7 +191,7 @@ INSERT produkte GENERATE 200000 WORKERS 8     -- feste Worker-Anzahl (bis 64)
   und der Watchdog wird deaktiviert.
 - Große `GENERATE`-Läufe schalten für ihre Dauer automatisch in den BULK MODE.
 
-### 4. FIND / GET — Abfragen
+### FIND / GET — Abfragen
 
 ```
 FIND <block> [SELECT <feld>[,<feld>...] | <feld> AS <alias> | COUNT(<feld>) AS <alias> | <feld>/<n> AS <alias>]
@@ -269,7 +269,7 @@ EXPLAIN FIND produkte WHERE preis > 18 ORDER preis:DESC LIMIT 10
 EXPLAIN SEARCH produkte "kabellose tastatur"
 ```
 
-### 5. SEARCH — Volltextsuche
+### SEARCH — Volltextsuche
 
 ```
 SEARCH <block> "<text>" [EXACT | FUZZY]
@@ -286,7 +286,7 @@ SEARCH produkte "+muss_enthalten -darf_nicht_enthalten optional"
 SEARCH produkte "tastatur" WHERE preis > 18 LIMIT 50 ORDER name
 ```
 
-### 6. UPDATE
+### UPDATE
 
 ```
 UPDATE <block> WHERE <bedingung> SET <feld> = <wert>[, <feld2> = <wert2> ...]
@@ -313,7 +313,7 @@ UPDATE ALL produkte SET status = "archiviert"
 UPDATE produkte WHERE status = "entwurf" SET status = "veroeffentlicht", veroeffentlicht_am = now()
 ```
 
-### 7. DELETE
+### DELETE
 
 ```
 DELETE <block> WHERE <bedingung>
@@ -328,7 +328,7 @@ DELETE produkte WHERE preis < 5 OR auf_lager = false
 DELETE ALL produkte
 ```
 
-### 8. Aggregationen
+### Aggregationen (COUNT/SUM/AVG/...)
 
 ```
 COUNT  <block> [WHERE <bedingung>]
@@ -352,7 +352,7 @@ MODE produkte kategorie
 STDDEV punktzahlen wert
 ```
 
-### 9. GROUP BY
+### GROUP BY
 
 ```
 GROUP <block> BY <feld> [COUNT | SUM | AVG | MIN | MAX] [<feld>] [WHERE <bedingung>]
@@ -365,7 +365,7 @@ GROUP produkte BY kategorie AVG preis WHERE preis > 10
 GROUP logs BY stufe COUNT WHERE timestamp > "2024-01-01"
 ```
 
-### 10. ACID-Transaktionen
+### ACID-Transaktionen
 
 ```
 BEGIN [<db> <block>]
@@ -394,7 +394,7 @@ BEGIN shop produkte
 ROLLBACK
 ```
 
-### 11. TURBO / Massenladen (BULK)
+### TURBO / Massenladen (BULK)
 
 ```
 BULK MODE ON            Breitere Batch-Fenster, gelockerte WAL-fsync-Richtlinie
@@ -424,7 +424,7 @@ IMPORT produkte FROM FILE '/data/produkte.json.gz' FORMAT ARRAY
 BULK STATUS
 ```
 
-### 12. JOIN
+### JOIN
 
 ```
 JOIN <block1> WITH <block2> ON <block1>.<feld> = <block2>.<feld>
@@ -435,7 +435,7 @@ JOIN bestellungen WITH kunden ON bestellungen.kunden_id = kunden._id
 JOIN beitraege WITH benutzer ON beitraege.autor_id = benutzer._id
 ```
 
-### 13. RELATE
+### RELATE
 
 Registriert einmalig, wie sich ein Block auf andere Blöcke bezieht
 (optional in anderen Datenbanken); `FIND` löst die Beziehung danach
@@ -462,7 +462,7 @@ FIND filme SELECT titel,regisseure.name,schauspieler.name
 FIND verkaeufe SELECT kunden.name,produkte.name,rechnungen.gesamt
 ```
 
-### 14. AUTORELATIONS (automatische, temporäre Selbstbeziehungen)
+### AUTORELATIONS
 
 CaimanDB beobachtet seinen eigenen Lesezugriff: Wenn derselbe Benutzer
 dasselbe Dokument wiederholt in einem kurzen Zeitfenster liest (Standard:
@@ -518,7 +518,7 @@ SHOW AUTORELATIONS produkte CYCLES;
 SHOW AUTORELATIONS produkte BROKEN;
 ```
 
-### 15. Ansichten (VIEWS)
+### Ansichten (VIEWS)
 
 ```
 VIEW CREATE <name> AS FIND <block> WHERE <bedingung>
@@ -536,7 +536,7 @@ aktive_benutzer
 VIEW DROP aktive_benutzer
 ```
 
-### 16. Export / Import
+### EXPORT / IMPORT
 
 `EXPORT` schreibt immer **beide** — eine `.csv`- und eine `.json`-Datei —
 in `<data_root>/backups/`, mit dem von dir angegebenen Basisnamen. Jede
@@ -557,7 +557,7 @@ IMPORT produkte FROM "produkte_export.json"
 IMPORT produkte FROM "produkte_export.csv"
 ```
 
-### 17. Benutzerverwaltung
+### Benutzerverwaltung
 
 ```
 CREATE USER <name> PASSWORD "<passwort>" [ROLE admin|readwrite|readonly]
@@ -571,7 +571,7 @@ SHOW USERS
 DROP USER analyst
 ```
 
-### 18. Shard-Verwaltung
+### Shard-Verwaltung
 
 ```
 SHARD STATUS
@@ -585,13 +585,13 @@ SHARD REBALANCE
 SHARD SCALE shop 32
 ```
 
-### 19. Cluster-Verwaltung
+### Cluster
 
 ```
 CLUSTER STATUS
 ```
 
-### 20. Navigation & System
+### Navigation & System
 
 ```
 PWD               Aktuellen Pfad anzeigen
@@ -607,7 +607,7 @@ HELP              Hilfe anzeigen
 EXIT, QUIT        Die Konsole verlassen
 ```
 
-### 21. Filteroperatoren (in jedem `WHERE` verwendbar)
+### Filteroperatoren (in jedem `WHERE` verwendbar)
 
 | Operator | Bedeutung |
 |---|---|
@@ -626,7 +626,7 @@ EXIT, QUIT        Die Konsole verlassen
 | `AND` | Logisches UND (Standard, wenn weggelassen) |
 | `OR` | Logisches ODER |
 
-### 22. Vollständiges Beispiel
+### Vollständiges Beispiel
 
 ```sql
 CREATE DB shop
