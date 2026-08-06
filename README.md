@@ -108,7 +108,7 @@ For detailed architecture and disk storage information, refer to [`docs/architec
 ### Obtaining the Source Code
 
 ```bash
-git clone https://github.com/yourusername/caimandb.git
+git clone https://github.com/Horinsoft/caimandb.git
 cd caimandb
 ```
 
@@ -118,12 +118,12 @@ The project includes build scripts for different operating systems:
 
 **Unix Systems (Linux / macOS):**
 ```bash
-./scripts/build.sh
+./build.sh
 ```
 
 **Windows:**
 ```cmd
-scripts\build.bat
+build.bat
 ```
 
 **Using Makefile (Unix):**
