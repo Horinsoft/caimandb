@@ -6,7 +6,6 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![CI](https://github.com/Horinsoft/caimandb/blob/main/ui/img/logo.png)](https://github.com/caimandb/caimandb/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/caimandb/caimandb)](https://goreportcard.com/report/github.com/caimandb/caimandb)
 [![Documentation](https://img.shields.io/badge/docs-reference-blue.svg)](https://caimandb.io/docs)
 
