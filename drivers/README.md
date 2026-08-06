@@ -1,57 +1,57 @@
-# Drivers de CaimanDB
+# CaimanDB Drivers
 
-Clientes ligeros para conectarse a CaimanDB desde distintos lenguajes,
-todos sin dependencias externas (solo librería estándar de cada
-lenguaje, salvo PHP que requiere la extensión `curl`, muy común en
-cualquier instalación).
+Lightweight clients to connect to CaimanDB from different languages,
+all without external dependencies (only each language's standard
+library, except for PHP which requires the `curl` extension, very
+common in any installation).
 
-| Carpeta | Lenguaje | Requiere |
+| Folder | Language | Requires |
 |---|---|---|
-| `js/` | JavaScript / Node.js | Node 18+ (usa `fetch` nativo) |
+| `js/` | JavaScript / Node.js | Node 18+ (uses native `fetch`) |
 | `go/` | Go | Go 1.21+ |
 | `python/` | Python | Python 3.8+ |
 | `php/` | PHP | PHP 7.4+, ext-curl |
 | `java/` | Java | Java 11+ |
 
-## Qué hacen
+## What they do
 
-Los cinco hablan el mismo protocolo — el de CaimanDB documentado en
-`docs/api/http-api.md` del repo principal — y exponen la misma forma
-de API en cada lenguaje:
+All five speak the same protocol — CaimanDB's protocol documented in
+`docs/api/http-api.md` from the main repo — and expose the same API
+shape in each language:
 
-- `login(usuario, contraseña)` — autentica contra el servidor admin y guarda el JWT
-- `query(nql, db)` — ejecuta cualquier comando NQL crudo (`FIND`, `INSERT`, `UPDATE`, `JOIN`, transacciones, lo que sea)
-- Wrappers de conveniencia: `insert`, `get`, `find`, `search`, `update`, `delete`, `count`
+- `login(username, password)` — authenticates against the admin server and stores the JWT
+- `query(nql, db)` — executes any raw NQL command (`FIND`, `INSERT`, `UPDATE`, `JOIN`, transactions, whatever)
+- Convenience wrappers: `insert`, `get`, `find`, `search`, `update`, `delete`, `count`
 - `health()`, `status()`
-- `watch(...)` — se suscribe al change stream en tiempo real (Server-Sent Events)
+- `watch(...)` — subscribes to the real-time change stream (Server-Sent Events)
 
-Todos soportan tanto Basic Auth (usuario/contraseña) como JWT Bearer
-token (vía `login()` o pasando el token directamente).
+All support both Basic Auth (username/password) and JWT Bearer
+token (via `login()` or passing the token directly).
 
-## Qué NO hacen (todavía)
+## What they DON'T do (yet)
 
-- No incluyen un query builder tipado por lenguaje — las cláusulas
-  `WHERE`/`SET`/`ORDER` se pasan como texto NQL crudo. Es la opción
-  más simple y la que menos supuestos hace sobre la sintaxis exacta
-  que soporta tu versión de CaimanDB; armar un DSL por lenguaje encima
-  de esto es un buen próximo paso si lo necesitás.
-- No manejan pooling de conexiones ni retries — son clientes finos,
-  pensados como punto de partida.
+- They don't include a language-typed query builder — `WHERE`/`SET`/`ORDER`
+  clauses are passed as raw NQL text. This is the simplest option and
+  makes the fewest assumptions about the exact syntax your version of
+  CaimanDB supports; building a DSL per language on top of this is a
+  good next step if you need it.
+- They don't handle connection pooling or retries — they're thin
+  clients, intended as a starting point.
 
-## Verificación
+## Verification
 
-Este sandbox no tenía compiladores de todos los lenguajes disponibles.
-Estado real de cada uno:
+This sandbox didn't have compilers for all languages available.
+Actual status of each:
 
-- **JavaScript**: sintaxis verificada con `node --check`.
-- **Python**: sintaxis y un smoke test (import + instanciación) verificados con `python3`.
-- **Java**: compilado y corrido de verdad (incluyendo el armado de
-  comandos NQL de `find`/`insert`/`update` contra un puerto muerto,
-  para confirmar que la lógica llega intacta hasta la capa de red).
-- **Go**: sin toolchain de Go disponible para compilar — escrito con
-  cuidado y revisado a mano, pero corré `go build ./...` antes de
-  confiar en él y avisame si sale algún error.
-- **PHP**: sin intérprete de PHP disponible — mismo caso que Go, corré
-  `php -l` antes de confiar en él.
+- **JavaScript**: syntax verified with `node --check`.
+- **Python**: syntax and a smoke test (import + instantiation) verified with `python3`.
+- **Java**: compiled and actually run (including assembling NQL commands
+  for `find`/`insert`/`update` against a dead port, to confirm the logic
+  reaches the network layer intact).
+- **Go**: no Go toolchain available to compile — written carefully and
+  reviewed by hand, but run `go build ./...` before trusting it and let
+  me know if any error shows up.
+- **PHP**: no PHP interpreter available — same case as Go, run
+  `php -l` before trusting it.
 
-Si algo no compila tal cual está, pegame el error y lo corrijo.
+If anything doesn't compile as-is, paste me the error and I'll fix it.
