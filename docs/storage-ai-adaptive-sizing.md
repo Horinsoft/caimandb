@@ -1,149 +1,146 @@
-# Storage AI: sizing adaptativo de Badger por bloque (julio 2026)
+# Storage AI: per-block adaptive Badger sizing (July 2026)
 
-**Importante, igual que en los otros documentos de este pase:** este
-entorno no tuvo acceso a red ni a un toolchain de Go instalado, así que lo
-que sigue se escribió y revisó a mano (tipos, firmas, balance de
-llaves/paréntesis) pero **no se compiló**. Ejecuta
-`go build ./... && go vet ./...` antes de confiar en esto, y sobre todo
-antes de desplegarlo con datos reales.
+**Important, same as in the other documents in this pass:** this
+environment had no network access nor a Go toolchain installed, so what
+follows was written and reviewed by hand (types, signatures, brace/parenthesis
+balance) but **was not compiled**. Run
+`go build ./... && go vet ./...` before relying on this, and especially
+before deploying it with real data.
 
-## El problema reportado
+## The reported problem
 
-> Todos los bloques pesan casi lo mismo (~49 MB), incluso con muy pocos
-> documentos. Esto indica que el tamaño proviene de la preasignación de
-> BadgerDB, no de los datos almacenados.
+> All blocks weigh about the same (~49 MB), even with very few documents.
+> This indicates the size comes from BadgerDB pre-allocation, not from
+> stored data.
 
-Correcto. Antes de este cambio, `storage/badger_pool.go` abría **todos**
-los bloques (`__data`, `__index`, `__users`, `__system`, sin importar
-cuántos documentos tuvieran) con exactamente las mismas opciones fijas de
-BadgerDB, definidas en `storage/constants.go`:
+Correct. Before this change, `storage/badger_pool.go` opened **all**
+blocks (`__data`, `__index`, `__users`, `__system`, regardless of how
+many documents they had) with exactly the same fixed BadgerDB options,
+defined in `storage/constants.go`:
 
 ```go
 badgerValueLogSize       = 64 << 20   // 64MB
 badgerMemTableSize       = 128 << 20  // 128MB
-badgerNumMemTables       = 4          // → hasta 512MB de memtables
-badgerBlockCacheSize     = 512 << 20  // 512MB de caché de bloques
+badgerNumMemTables       = 4          // → up to 512MB of memtables
+badgerBlockCacheSize     = 512 << 20  // 512MB block cache
 ```
 
-Badger reserva/crea sus archivos de memtable y value-log de acuerdo a esos
-números al abrir, independientemente de cuántos documentos vayan a vivir
-ahí. Un bloque nuevo con 3 documentos paga el mismo footprint en disco que
-uno con 300 000. Con miles de bloques pequeños, eso se vuelve un problema
-real de espacio en disco (y de RAM, por el `BlockCacheSize` de 512MB × N
-bloques abiertos simultáneamente).
+Badger reserves/creates its memtable and value-log files according to
+those numbers when opening, regardless of how many documents will actually
+live there. A brand new block with 3 documents pays the same disk footprint
+as one with 300,000. With thousands of small blocks, this becomes a real
+disk space problem (and RAM, due to the 512MB × N `BlockCacheSize` for
+simultaneously open blocks).
 
-## La solución implementada: tiers + presupuesto de RAM compartido
+## The implemented solution: tiers + shared RAM budget
 
-`internal/caimandb/storage/adaptive.go` (nuevo) introduce 4 **tiers** de
-configuración de Badger:
+`internal/caimandb/storage/adaptive.go` (new) introduces 4 **tiers** of
+Badger configuration:
 
-| Tier | MemTable | NumMemtables | ValueLog | BlockCache | Pensado para |
+| Tier | MemTable | NumMemtables | ValueLog | BlockCache | Intended for |
 |---|---|---|---|---|---|
-| `micro` | 4MB | 2 | 8MB | 8MB | Bloque nuevo o casi vacío |
-| `small` | 16MB | 3 | 16MB | 32MB | Algunos datos, lejos de "big data" |
-| `standard` | 128MB | 4 | 64MB | 512MB | Los valores fijos originales |
-| `large` | 256MB | 6 | 128MB | 1GB | Bloque ya con volumen serio |
+| `micro` | 4MB | 2 | 8MB | 8MB | New or nearly empty block |
+| `small` | 16MB | 3 | 16MB | 32MB | Some data, far from "big data" |
+| `standard` | 128MB | 4 | 64MB | 512MB | The original fixed values |
+| `large` | 256MB | 6 | 128MB | 1GB | Block already with serious volume |
 
-`storage/badger_pool.go` (`DBPool.pickTierLocked`), al abrir un bloque:
+`storage/badger_pool.go` (`DBPool.pickTierLocked`), when opening a block:
 
-1. **Mira qué hay ya en disco** para ese bloque (`onDiskFootprintBytes`):
-   un bloque que no existe todavía, o que existe pero está vacío, cae en
-   `micro` — esto es lo que arregla directamente el "~49MB con pocos
-   documentos". Un bloque que ya tiene, por ejemplo, 200MB en disco se
-   reabre en `standard` o `large`, no en `micro`.
-2. **Lo ajusta contra un presupuesto de RAM compartido** entre todos los
-   bloques actualmente abiertos en el proceso (`DBPool.budgetTotal`, por
-   defecto el 50% de la RAM detectada vía `/proc/meminfo` en Linux, o
-   2GB por defecto si no se puede detectar — configurable con
-   `storage_ai_ram_fraction` / `storage_ai_max_budget_mb` /
-   `CAIMANDB_STORAGE_AI_MAX_BUDGET_MB`). Si el tier "ideal" para ese
-   bloque no cabe en lo que queda de presupuesto, se abre en el tier más
-   grande que sí quepa — nunca se rechaza abrir un bloque por falta de
-   presupuesto, en el peor caso se abre en `micro`.
+1. **Looks at what's already on disk** for that block (`onDiskFootprintBytes`):
+   a block that doesn't exist yet, or exists but is empty, falls into
+   `micro` — this directly fixes the "~49MB with few documents" issue.
+   A block that already has, say, 200MB on disk is reopened at `standard`
+   or `large`, not `micro`.
+2. **Adjusts it against a shared RAM budget** across all blocks currently
+   open in the process (`DBPool.budgetTotal`, default 50% of detected RAM
+   via `/proc/meminfo` on Linux, or 2GB by default if undetectable —
+   configurable with `storage_ai_ram_fraction` / `storage_ai_max_budget_mb` /
+   `CAIMANDB_STORAGE_AI_MAX_BUDGET_MB`). If the "ideal" tier for that block
+   doesn't fit in the remaining budget, it's opened at the largest tier
+   that does fit — a block is never refused due to lack of budget; in the
+   worst case it opens at `micro`.
 
-Esto es exactamente lo que se pedía: *"que los bloques pequeños ocupen
-poco espacio y los grandes maximicen el rendimiento"*, con la RAM y la
-carga (número de bloques abiertos a la vez) como entrada de la decisión.
+This is exactly what was requested: *"small blocks should take little
+space and large blocks should maximize performance"*, with RAM and load
+(number of blocks open at once) as inputs to the decision.
 
-`storage_ai_enabled=false` en la config (o `CAIMANDB_STORAGE_AI_ENABLED=false`)
-desactiva todo esto y reproduce el comportamiento fijo original
-byte-por-byte (tier `standard` para todo).
+`storage_ai_enabled=false` in the config (or `CAIMANDB_STORAGE_AI_ENABLED=false`)
+disables all of this and reproduces the original fixed behavior
+byte-for-byte (`standard` tier for everything).
 
-## Concurrencia y velocidad de consultas: qué ya existía y qué se ajustó
+## Concurrency and query speed: what already existed and what was adjusted
 
-- **Cada bloque ya es una instancia BadgerDB independiente**
-  (`pool.OpenBlock` → `openBlock` por `(db, block)`), así que la
-  concurrencia entre bloques ya era real antes de este cambio: dos
-  bloques distintos se leen/escriben sin contención entre sí.
-- Dentro de un mismo bloque, Badger ya maneja sus propias transacciones
-  MVCC concurrentes (lecturas snapshot no bloquean escrituras).
-- Lo nuevo: el tier `large` sube `NumCompactors` (más goroutines de
-  compactación en paralelo) y `NumLevelZeroTables` (más margen antes de
-  que las escrituras tengan que esperar a que L0 compacte), pensado para
-  que un bloque grande bajo carga de escritura concurrente sostenida no
-  se estanque tan pronto. `micro`/`small` se quedan con menos
-  compactores porque, con tan poco dato, no hay nada que compactar en
-  paralelo — sería puro overhead.
-- `AdaptiveStats()` en `DBPool` expone cuántos bloques hay abiertos en
-  cada tier y el presupuesto de RAM usado/total, para poder verificar en
-  producción que la clasificación se está comportando como se espera
-  (aún no está conectado a ningún endpoint HTTP/métrica — ver
-  "Siguiente paso" más abajo).
+- **Each block is already an independent BadgerDB instance**
+  (`pool.OpenBlock` → `openBlock` by `(db, block)`), so concurrency
+  between blocks was already real before this change: two different
+  blocks read/write without contending with each other.
+- Within the same block, Badger already handles its own concurrent MVCC
+  transactions (snapshot reads don't block writes).
+- What's new: the `large` tier raises `NumCompactors` (more parallel
+  compaction goroutines) and `NumLevelZeroTables` (more headroom before
+  writes have to wait for L0 compaction), designed so a large block under
+  sustained concurrent write load doesn't stall as quickly.
+  `micro`/`small` stay with fewer compactors because with so little data,
+  there's nothing to compact in parallel — it would be pure overhead.
+- `AdaptiveStats()` in `DBPool` exposes how many blocks are open in each
+  tier and the used/total RAM budget, to verify in production that the
+  classification is behaving as expected (not yet connected to any HTTP
+  endpoint/metric — see "Next step" below).
 
-## Lo que esto NO hace (a propósito)
+## What this does NOT do (by design)
 
-**No hay reajuste en caliente de un bloque que ya está sirviendo
-tráfico.** El tier de un bloque se decide una sola vez, la primera vez
-que se abre en un proceso dado (normalmente al arrancar, o la primera
-vez que algo lo toca si el proceso lo abre de forma perezosa). Si un
-bloque nace en `micro` y crece mucho mientras el proceso sigue corriendo,
-se queda en `micro` hasta el próximo reinicio/reapertura de ese bloque —
-en ese momento `onDiskFootprintBytes` ya verá el tamaño real y lo abrirá
-en el tier que le corresponde.
+**There is no hot re-tiering of a block that's already serving traffic.**
+A block's tier is decided once, the first time it's opened in a given
+process (usually at startup, or the first time something touches it if
+the process opens it lazily). If a block is born in `micro` and grows a
+lot while the process is still running, it stays in `micro` until the
+next restart/reopen of that block — at that point `onDiskFootprintBytes`
+will see the real size and open it at the appropriate tier.
 
-Se decidió así, no por descuido: subir de tier a un bloque **vivo**
-significa cerrar su `*badger.DB` y volver a abrirlo con otras opciones, y
-en este repo eso no es seguro sin más. Revisando quién usa el pool:
+This was decided not out of oversight: upgrading a **live** block's tier
+means closing its `*badger.DB` and reopening it with different options,
+and in this repo that's not safe without more work. Checking who uses the
+pool:
 
-- `ops_insert.go`, `ops_local.go`, `transaction.go` sí toman
-  `e.lockManager.Lock(<db>/<block>)` antes de escribir.
-- **`ops_find.go` (lecturas) no toma ese lock** — se apoya en el
-  aislamiento MVCC de Badger, que asume que el `*badger.DB` sigue vivo
-  mientras dura la transacción/iterador.
+- `ops_insert.go`, `ops_local.go`, `transaction.go` do take
+  `e.lockManager.Lock(<db>/<block>)` before writing.
+- **`ops_find.go` (reads) does not take that lock** — it relies on
+  Badger's MVCC isolation, which assumes the `*badger.DB` handle stays
+  alive for the duration of the transaction/iterator.
 
-Cerrar el handle de Badger mientras hay iteradores o transacciones de
-lectura en vuelo en otra goroutine no es una operación segura documentada
-en Badger. Para hacerlo bien haría falta, como mínimo, que el resize
-tome el mismo lock que ya usan los escritores (bloqueando escrituras
-nuevas durante el swap) **y** alguna forma de esperar a que los lectores
-en vuelo terminen (algo que hoy no existe, porque hoy nada necesita
-esperar a que un lector termine). Es exactamente el tipo de cambio que
-este repo ya evitó hacer "a ciegas" en otros sitios (ver
-`docs/known-limitations.md`) por no tener un compilador ni tests de
-concurrencia a mano para verificarlo.
+Closing the Badger handle while there are iterators or read transactions
+in flight in another goroutine is not a documented safe operation in
+Badger. To do it properly would require, at minimum, that the resize
+takes the same lock already used by writers (blocking new writes during
+the swap) **and** some way to wait for in-flight readers to finish
+(something that doesn't exist today, because today nothing needs to wait
+for a reader to finish). This is exactly the kind of change this repo
+already avoided doing "blindly" elsewhere (see
+`docs/known-limitations.md`) due to not having a compiler or concurrency
+tests available to verify it.
 
-## Siguiente paso razonable (no implementado aquí)
+## Reasonable next step (not implemented here)
 
-Si se quiere upgrade en caliente de verdad, el camino más seguro es
-extender la barrida de `maintenance.go` (que ya es de un solo goroutine,
-ya pausa entre bloques, y ya sabe qué bloques están fríos/calientes):
+If true hot upgrade is desired, the safest path is to extend the
+`maintenance.go` sweep (which is already single-goroutine, already
+pauses between blocks, and already knows which blocks are cold/hot):
 
-1. Añadir a la config algo como `AdaptiveResizeEnabled` +
-   `AdaptiveResizeCheckInterval`.
-2. En cada pasada de `runMaintenanceSweep`, para cada bloque: comparar
-   `db.Size()` (tamaño real actual de LSM+vlog, que Badger expone) contra
-   el tier con el que se abrió (`DBPool.tierOf`).
-3. Si se pasó del techo de su tier: tomar `e.lockManager.Lock(key)` (el
-   mismo que usan los escritores) para bloquear escrituras nuevas a ese
-   bloque, cerrar y reabrir el handle con el tier nuevo, liberar el lock.
-   Esto bloquea escritores durante el swap (aceptable, es breve y poco
-   frecuente) pero **no protege lectores que no toman ese lock hoy** —
-   habría que decidir primero si `ops_find.go` empieza a tomar un
-   `RLock()` de ese mismo `shardedLockManager` (ahora mismo tiene
-   `RLock`/`RUnlock` ya implementados y sin usar — ver `locks.go`) antes
-   de poder llamar esto realmente seguro bajo carga concurrente.
+1. Add something like `AdaptiveResizeEnabled` +
+   `AdaptiveResizeCheckInterval` to the config.
+2. In each `runMaintenanceSweep` pass, for each block: compare
+   `db.Size()` (actual current LSM+vlog size, which Badger exposes)
+   against the tier it was opened with (`DBPool.tierOf`).
+3. If it exceeded its tier's ceiling: take `e.lockManager.Lock(key)` (the
+   same one writers use) to block new writes to that block, close and
+   reopen the handle with the new tier, release the lock. This blocks
+   writers during the swap (acceptable, it's brief and infrequent) but
+   **does not protect readers that don't take that lock today** —
+   you'd first need to decide whether `ops_find.go` starts taking an
+   `RLock()` on that same `shardedLockManager` (it currently has
+   `RLock`/`RUnlock` already implemented and unused — see `locks.go`)
+   before you can call this truly safe under concurrent load.
 
-Cada uno de esos tres pasos necesita compilar y correr contra tráfico
-concurrente real antes de confiar en él — no se implementó a ciegas en
-este pase por la misma razón que el resto de límites documentados en
+Each of those three steps needs to be compiled and run against real
+concurrent traffic before trusting it — not implemented blindly in this
+pass for the same reason as the rest of the limitations documented in
 `docs/known-limitations.md`.
