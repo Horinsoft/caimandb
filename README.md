@@ -524,7 +524,6 @@ If any step fails, please report the issue in the issue tracking system.
 - **Issue Reporting**: [GitHub Issues](https://github.com/Horinsoft/caimandb/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/Horinsoft/caimandb/discussions)
 - **Documentation**: [Project Wiki](https://github.com/Horinsoft/caimandb/wiki)
-- **Website**: [https://caimandb.io](https://caimandb.io)
 
 ---
 
