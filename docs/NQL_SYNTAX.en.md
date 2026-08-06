@@ -1,7 +1,3 @@
-Aquí está la versión en inglés con todos los enlaces en el índice:
-
----
-
 # CaimanDB NQL — Complete Syntax Reference (English)
 
 Other languages: [Español](./NQL_SYNTAX.es.md) · [Deutsch](./NQL_SYNTAX.de.md)
