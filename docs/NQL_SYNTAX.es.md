@@ -1,3 +1,7 @@
+Entendido. Quieres que el índice tenga exactamente ese formato (sin números) y cada elemento sea un enlace al encabezado correspondiente. Aquí está el documento completo:
+
+---
+
 # CaimanDB NQL — Referencia Completa de Sintaxis (Español)
 
 Otros idiomas: [English](./NQL_SYNTAX.en.md) · [Deutsch](./NQL_SYNTAX.de.md)
@@ -15,32 +19,32 @@ variantes y ejemplos trabajados.
   las palabras clave por convención.
 
 ## Índice
-1. Comandos de bases de datos
-2. Comandos de bloques
-3. INSERT — todas las variantes
-4. FIND / GET — consultas
-5. SEARCH — texto completo
-6. UPDATE
-7. DELETE
-8. Agregaciones (COUNT/SUM/AVG/...)
-9. GROUP BY
-10. Transacciones ACID
-11. TURBO / carga masiva (BULK)
-12. JOIN
-13. RELATE
-14. AUTORELATIONS
-15. Vistas (VIEWS)
-16. EXPORT / IMPORT
-17. Gestión de usuarios
-18. Gestión de shards
-19. Cluster
-20. Navegación y sistema
-21. Operadores de filtro
-22. Ejemplo completo
+- [Comandos de bases de datos](#comandos-de-bases-de-datos)
+- [Comandos de bloques](#comandos-de-bloques)
+- [INSERT — todas las variantes](#insert--todas-las-variantes)
+- [FIND / GET — consultas](#find--get--consultas)
+- [SEARCH — texto completo](#search--texto-completo)
+- [UPDATE](#update)
+- [DELETE](#delete)
+- [Agregaciones (COUNT/SUM/AVG/...)](#agregaciones-countsumavg)
+- [GROUP BY](#group-by)
+- [Transacciones ACID](#transacciones-acid)
+- [TURBO / carga masiva (BULK)](#turbo--carga-masiva-bulk)
+- [JOIN](#join)
+- [RELATE](#relate)
+- [AUTORELATIONS (autorelaciones automáticas y temporales)](#autorelations-autorelaciones-automáticas-y-temporales)
+- [Vistas (VIEWS)](#vistas-views)
+- [EXPORT / IMPORT](#export--import)
+- [Gestión de usuarios](#gestión-de-usuarios)
+- [Gestión de shards](#gestión-de-shards)
+- [Cluster](#cluster)
+- [Navegación y sistema](#navegación-y-sistema)
+- [Operadores de filtro](#operadores-de-filtro-usables-en-cualquier-where)
+- [Ejemplo completo](#ejemplo-completo)
 
 ---
 
-### 1. Comandos de bases de datos
+### Comandos de bases de datos
 
 ```
 CREATE DB <nombre>                  Crea una nueva base de datos
@@ -72,7 +76,7 @@ RESTORE tienda FROM "tienda_2026-08.bak"
 DROP DB tienda_vieja
 ```
 
-### 2. Comandos de bloques
+### Comandos de bloques
 
 Un bloque es el equivalente de CaimanDB a una tabla/colección: un contenedor
 de documentos sin esquema fijo, dentro de una base de datos.
@@ -106,7 +110,7 @@ EMPTY BLOCK productos                -- conserva el bloque, borra sus documentos
 CLEAR productos                      -- igual que arriba
 ```
 
-### 3. INSERT — todas las variantes
+### INSERT — todas las variantes
 
 ```
 INSERT <bloque> [<id>] <objeto-json>
@@ -189,7 +193,7 @@ INSERT productos GENERATE 200000 WORKERS 8     -- número fijo de workers (hasta
   desactiva el vigilante.
 - Los `GENERATE` grandes activan BULK MODE automáticamente mientras duran.
 
-### 4. FIND / GET — consultas
+### FIND / GET — consultas
 
 ```
 FIND <bloque> [SELECT <campo>[,<campo>...] | <campo> AS <alias> | COUNT(<campo>) AS <alias> | <campo>/<n> AS <alias>]
@@ -267,7 +271,7 @@ EXPLAIN FIND productos WHERE precio > 18 ORDER precio:DESC LIMIT 10
 EXPLAIN SEARCH productos "teclado inalambrico"
 ```
 
-### 5. SEARCH — texto completo
+### SEARCH — texto completo
 
 ```
 SEARCH <bloque> "<texto>" [EXACT | FUZZY]
@@ -284,7 +288,7 @@ SEARCH productos "+debe_incluir -debe_excluir opcional"
 SEARCH productos "teclado" WHERE precio > 18 LIMIT 50 ORDER nombre
 ```
 
-### 6. UPDATE
+### UPDATE
 
 ```
 UPDATE <bloque> WHERE <condición> SET <campo> = <valor>[, <campo2> = <valor2> ...]
@@ -310,7 +314,7 @@ UPDATE ALL productos SET estado = "archivado"
 UPDATE productos WHERE estado = "borrador" SET estado = "publicado", publicado_en = now()
 ```
 
-### 7. DELETE
+### DELETE
 
 ```
 DELETE <bloque> WHERE <condición>
@@ -325,7 +329,7 @@ DELETE productos WHERE precio < 5 OR en_stock = false
 DELETE ALL productos
 ```
 
-### 8. Agregaciones
+### Agregaciones (COUNT/SUM/AVG/...)
 
 ```
 COUNT  <bloque> [WHERE <condición>]
@@ -349,7 +353,7 @@ MODE productos categoria
 STDDEV puntajes valor
 ```
 
-### 9. GROUP BY
+### GROUP BY
 
 ```
 GROUP <bloque> BY <campo> [COUNT | SUM | AVG | MIN | MAX] [<campo>] [WHERE <condición>]
@@ -362,7 +366,7 @@ GROUP productos BY categoria AVG precio WHERE precio > 10
 GROUP logs BY nivel COUNT WHERE timestamp > "2024-01-01"
 ```
 
-### 10. Transacciones ACID
+### Transacciones ACID
 
 ```
 BEGIN [<db> <bloque>]
@@ -391,7 +395,7 @@ BEGIN tienda productos
 ROLLBACK
 ```
 
-### 11. TURBO / carga masiva (BULK)
+### TURBO / carga masiva (BULK)
 
 ```
 BULK MODE ON             Ventanas de lote más amplias, fsync del WAL relajado
@@ -420,7 +424,7 @@ IMPORT productos FROM FILE '/data/productos.json.gz' FORMAT ARRAY
 BULK STATUS
 ```
 
-### 12. JOIN
+### JOIN
 
 ```
 JOIN <bloque1> WITH <bloque2> ON <bloque1>.<campo> = <bloque2>.<campo>
@@ -431,7 +435,7 @@ JOIN pedidos WITH clientes ON pedidos.cliente_id = clientes._id
 JOIN posts WITH usuarios ON posts.autor_id = usuarios._id
 ```
 
-### 13. RELATE
+### RELATE
 
 Registra una sola vez cómo se relaciona un bloque con otros bloques
 (opcionalmente en otras bases de datos); luego `FIND` resuelve la relación
@@ -458,7 +462,7 @@ FIND peliculas SELECT titulo,directores.nombre,actores.nombre
 FIND ventas SELECT clientes.nombre,productos.nombre,facturas.total
 ```
 
-### 14. AUTORELATIONS (autorelaciones automáticas y temporales)
+### AUTORELATIONS (autorelaciones automáticas y temporales)
 
 CaimanDB vigila su propio acceso de lectura: cuando el mismo usuario lee el
 mismo documento repetidamente en una ventana corta (por defecto: 5 lecturas
@@ -513,7 +517,7 @@ SHOW AUTORELATIONS productos CYCLES;
 SHOW AUTORELATIONS productos BROKEN;
 ```
 
-### 15. Vistas (VIEWS)
+### Vistas (VIEWS)
 
 ```
 VIEW CREATE <nombre> AS FIND <bloque> WHERE <condición>
@@ -531,7 +535,7 @@ usuarios_activos
 VIEW DROP usuarios_activos
 ```
 
-### 16. Exportar / Importar
+### EXPORT / IMPORT
 
 `EXPORT` siempre escribe **ambos** un archivo `.csv` y uno `.json` dentro de
 `<data_root>/backups/`, usando el nombre base que le des. Cada
@@ -552,7 +556,7 @@ IMPORT productos FROM "export_productos.json"
 IMPORT productos FROM "export_productos.csv"
 ```
 
-### 17. Gestión de usuarios
+### Gestión de usuarios
 
 ```
 CREATE USER <nombre> PASSWORD "<clave>" [ROLE admin|readwrite|readonly]
@@ -566,7 +570,7 @@ SHOW USERS
 DROP USER analista
 ```
 
-### 18. Gestión de shards
+### Gestión de shards
 
 ```
 SHARD STATUS
@@ -580,13 +584,13 @@ SHARD REBALANCE
 SHARD SCALE tienda 32
 ```
 
-### 19. Gestión de cluster
+### Cluster
 
 ```
 CLUSTER STATUS
 ```
 
-### 20. Navegación y sistema
+### Navegación y sistema
 
 ```
 PWD               Muestra la ruta actual
@@ -602,7 +606,7 @@ HELP              Muestra la ayuda
 EXIT, QUIT        Sale de la consola
 ```
 
-### 21. Operadores de filtro (usables en cualquier `WHERE`)
+### Operadores de filtro (usables en cualquier `WHERE`)
 
 | Operador | Significado |
 |---|---|
@@ -621,7 +625,7 @@ EXIT, QUIT        Sale de la consola
 | `AND` | Y lógico (por defecto si se omite) |
 | `OR` | O lógico |
 
-### 22. Ejemplo completo
+### Ejemplo completo
 
 ```sql
 CREATE DB tienda
