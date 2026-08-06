@@ -1,45 +1,49 @@
-# API HTTP
+Here's the English version of the HTTP API document:
 
-CaimanDB expone dos servidores HTTP independientes, cada uno en su
-propio puerto configurable.
+---
 
-## Servidor de administración (`internal/caimandb/http_admin.go`)
+# HTTP API
 
-Puerto por defecto: `admin_port` (`CAIMANDB_ADMIN_PORT`, 1556 si no se
-configura).
+CaimanDB exposes two independent HTTP servers, each on its own
+configurable port.
 
-| Ruta | Descripción |
+## Admin Server (`internal/caimandb/http_admin.go`)
+
+Default port: `admin_port` (`CAIMANDB_ADMIN_PORT`, 1556 if not
+configured).
+
+| Endpoint | Description |
 |---|---|
 | `GET /api/v1/health` | Health check |
-| `GET /api/v1/status` | Estado del motor |
-| `GET /api/v1/dbs` | Listar bases de datos |
-| `/api/v1/db/...` | Operaciones sobre una base de datos concreta |
-| `POST /api/v1/query` | Ejecutar una consulta NQL |
-| `POST /api/v1/backup` | Backup de una base de datos |
-| `POST /api/v1/restore` | Restore de una base de datos |
-| `POST /api/v1/compact` | Compactación |
-| `/api/v1/users` | Gestión de usuarios |
-| `POST /api/v1/auth/login` | Login (devuelve JWT) |
+| `GET /api/v1/status` | Engine status |
+| `GET /api/v1/dbs` | List databases |
+| `/api/v1/db/...` | Operations on a specific database |
+| `POST /api/v1/query` | Execute an NQL query |
+| `POST /api/v1/backup` | Backup a database |
+| `POST /api/v1/restore` | Restore a database |
+| `POST /api/v1/compact` | Compaction |
+| `/api/v1/users` | User management |
+| `POST /api/v1/auth/login` | Login (returns JWT) |
 | `POST /api/v1/auth/logout` | Logout |
-| `/api/v1/token` | Gestión de tokens |
-| `GET /api/v1/metrics` | Métricas Prometheus (`promhttp`) |
+| `/api/v1/token` | Token management |
+| `GET /api/v1/metrics` | Prometheus metrics (`promhttp`) |
 
-## Servidor de consultas (`internal/caimandb/http_query.go`)
+## Query Server (`internal/caimandb/http_query.go`)
 
-Puerto por defecto: `query_port` (`CAIMANDB_QUERY_PORT`, 1555 si no se
-configura).
+Default port: `query_port` (`CAIMANDB_QUERY_PORT`, 1555 if not
+configured).
 
-| Ruta | Descripción |
+| Endpoint | Description |
 |---|---|
-| `POST /query` | Ejecutar una consulta NQL. Para `FIND`/`GET`, la respuesta JSON incluye además `rows`/`columns` con los documentos ya estructurados (no solo el texto de resultado) |
-| `GET /status` | Estado del motor |
+| `POST /query` | Execute an NQL query. For `FIND`/`GET`, the JSON response additionally includes `rows`/`columns` with the already structured documents (not just the result text) |
+| `GET /status` | Engine status |
 | `GET /health` | Health check |
-| `GET /entities?db=` | Bases de datos y bloques reales (con conteo de documentos y tamaño) de la base indicada — usado por la barra lateral de `ui/` |
-| `GET /watch?db=&block=` | Change stream en tiempo real (Server-Sent Events). `db` y `block` son filtros opcionales; sin ninguno, transmite todos los cambios del nodo. Ejemplo: `curl -N "http://host:puerto/watch?db=mydb&block=users"`. La conexión permanece abierta hasta que el cliente la cierra; se envía un evento `change` (JSON con `op`/`db`/`block`/`id`/`data`/`timestamp`) por cada insert/update/delete, y un comentario `: heartbeat` cada 15s. Un suscriptor lento nunca bloquea las escrituras: si su buffer se llena, se descartan sus eventos (contador `caimandb_change_events_dropped_total`). |
+| `GET /entities?db=` | Actual databases and blocks (with document count and size) for the indicated database — used by the `ui/` sidebar |
+| `GET /watch?db=&block=` | Real-time change stream (Server-Sent Events). `db` and `block` are optional filters; with none, streams all changes from the node. Example: `curl -N "http://host:port/watch?db=mydb&block=users"`. The connection remains open until the client closes it; a `change` event (JSON with `op`/`db`/`block`/`id`/`data`/`timestamp`) is sent for each insert/update/delete, and a `: heartbeat` comment every 15s. A slow subscriber never blocks writes: if its buffer fills up, its events are dropped (counter `caimandb_change_events_dropped_total`). |
 
-## Autenticación
+## Authentication
 
-Ambos servidores soportan JWT (`auth_jwt.go`) y Basic Auth como
-alternativa. Las credenciales por defecto se configuran con
-`query_user` / `query_password` (o `CAIMANDB_QUERY_USER`) y el secreto
-JWT con `jwt_secret` (o `CAIMANDB_JWT_SECRET`).
+Both servers support JWT (`auth_jwt.go`) and Basic Auth as an
+alternative. Default credentials are configured with
+`query_user` / `query_password` (or `CAIMANDB_QUERY_USER`) and the JWT
+secret with `jwt_secret` (or `CAIMANDB_JWT_SECRET`).
