@@ -1,321 +1,143 @@
 # Changelog
 
-## [Unreleased] — WAL: evita doble aplicación de entradas tras un segundo crash
+## [Unreleased] — WAL: Prevents Double Application of Entries After a Second Crash
 
-- **Problema corregido:** después de recuperar el WAL en el arranque
-  (`RecoverWAL`), el motor solo podaba los segmentos viejos
-  (`PruneToLastSegment`) pero dejaba el segmento *activo* —el mismo que
-  acababa de leer y aplicar— como destino de las escrituras nuevas. Si
-  el proceso volvía a caer sin un `Close()` limpio de por medio, el
-  siguiente arranque releía ese segmento y reaplicaba las mismas
-  entradas una segunda vez; inofensivo para un `insert` (idempotente
-  por ID) pero corrompe un `update` no idempotente (`$inc`, etc).
-- **Fix:** nuevo `WAL.RotateAndPruneFresh()`
-  (`internal/caimandb/wal/wal.go`), usado por `RecoverWAL`
-  (`internal/caimandb/wal_recovery.go`) en vez de
-  `PruneToLastSegment()` directo: rota a un segmento nuevo y vacío
-  antes de podar, así ninguna entrada ya aplicada queda en disco para
-  ser releída. Ver `docs/corruption-fixes-2026-07.md` (sección 6) para
-  el detalle completo.
-- **No se tocó:** el resto del pipeline de arranque/interrupción/limpieza
-  ya estaba bien cubierto de antes — marcador `.clean` invalidado al
-  arrancar (punto 1 del doc de julio), *graceful shutdown* con
-  `SIGINT`/`SIGTERM`/`SIGHUP` y `http.Server.Shutdown` con timeout,
-  *worker pool* adaptativo que auto-termina goroutines ociosas
-  (`internal/caimandb/turbo/pool.go`), y un `tx_cleanup_loop` dedicado
-  que aborta y purga transacciones abandonadas/expiradas
-  (`internal/caimandb/transaction.go`). Este cambio revisó todo ese
-  camino sin tocarlo porque ya funcionaba correctamente; el único bug
-  real encontrado fue el de arriba.
+**Fixed Issue:** After WAL recovery on startup (`RecoverWAL`), the engine only pruned old segments (`PruneToLastSegment`) but left the *active* segment — the same one it had just read and applied — as the destination for new writes. If the process crashed again without a clean `Close()` in between, the next startup would re-read that segment and reapply the same entries a second time. This was harmless for `insert` (idempotent by ID) but corrupts non-idempotent `update` operations (`$inc`, etc.).
 
-## [Unreleased] — Storage AI: sizing adaptativo de BadgerDB por bloque
+**Fix:** New `WAL.RotateAndPruneFresh()` method (`internal/caimandb/wal/wal.go`), used by `RecoverWAL` (`internal/caimandb/wal_recovery.go`) instead of direct `PruneToLastSegment()`: rotates to a new empty segment before pruning, ensuring no already-applied entries remain on disk to be re-read. See `docs/corruption-fixes-2026-07.md` (section 6) for complete details.
 
-- **Problema corregido:** todo bloque (nuevo o no) se abría con las
-  mismas opciones fijas de BadgerDB (`storage/constants.go`), así que un
-  bloque casi vacío ocupaba en disco/RAM lo mismo que uno con cientos de
-  miles de documentos (~49MB reportado). Con muchos bloques pequeños eso
-  se vuelve un problema real de espacio y memoria.
-- **`internal/caimandb/storage/adaptive.go` (nuevo):** 4 tiers de
-  configuración de Badger (`micro`/`small`/`standard`/`large`). El tier
-  de un bloque se elige, la primera vez que se abre en el proceso, según
-  lo que ya hay en disco para ese bloque (vacío → `micro`) y se ajusta
-  contra un presupuesto de RAM compartido entre todos los bloques
-  abiertos a la vez (por defecto 50% de la RAM detectada vía
-  `/proc/meminfo`, configurable).
-- **`storage/badger_pool.go`:** `DBPool` ahora hace esta elección al
-  abrir cada bloque (`OpenDataPath`/`OpenBlock`, sin cambiar su firma
-  pública, así que ninguno de los ~20 call sites existentes se tocó) y
-  libera el presupuesto correspondiente al cerrar. Nuevo
-  `DBPool.AdaptiveStats()` para observabilidad (conteo de bloques por
-  tier, presupuesto usado/total).
-- **Config nueva:** `storage_ai_enabled` (default `true`),
-  `storage_ai_ram_fraction` (default `0.5`), `storage_ai_max_budget_mb`
-  (default `0` = sin tope explícito), con sus variables de entorno
-  `CAIMANDB_STORAGE_AI_*`. `storage_ai_enabled=false` reproduce el
-  comportamiento fijo original exacto.
-- **Qué NO hace todavía, a propósito:** no reajusta en caliente un
-  bloque que ya está sirviendo tráfico (solo se clasifica al abrir). Ver
-  [`docs/storage-ai-adaptive-sizing.md`](docs/storage-ai-adaptive-sizing.md)
-  para el análisis completo de por qué (lecturas en `ops_find.go` no
-  toman el lock de escritura, así que cerrar/reabrir el handle de Badger
-  bajo tráfico de lectura concurrente no es seguro sin más) y la ruta
-  recomendada para implementarlo con un compilador a mano.
+**Not Touched:** The rest of the startup/shutdown/cleanup pipeline was already well covered — `.clean` marker invalidated on startup (point 1 of July document), graceful shutdown with `SIGINT`/`SIGTERM`/`SIGHUP` and `http.Server.Shutdown` with timeout, adaptive worker pool that auto-terminates idle goroutines (`internal/caimandb/turbo/pool.go`), and dedicated `tx_cleanup_loop` that aborts and purges abandoned/expired transactions (`internal/caimandb/transaction.go`). This change reviewed that entire path without touching it because it already worked correctly; the only actual bug found was the one above.
 
-## [Unreleased] — `SHOW AUTORELATIONS`: `WHERE` y `ORDER BY` con dirección
+---
 
-- **`WHERE <expresión>`** (`cmd_show_autorelations.go`): sinónimo de
-  `FILTER` con la misma sintaxis de condición que usan `FIND`/`SEARCH`/
-  `VIEW`, sobre `doc_id`, `user_id`, `access_count`, `relevance`,
-  `last_seen`, `first_seen`. `FILTER` se mantiene por compatibilidad.
-- **`ORDER BY ... ASC|DESC`**: `ORDER BY` ahora acepta una dirección
-  explícita opcional, y se amplían los campos ordenables de
-  `DEGREE|ID|NAME` a también `ACCESS_COUNT`, `RELEVANCE`, `LAST_SEEN` y
-  `FIRST_SEEN`. Sin `ASC`/`DESC`, cada campo conserva su dirección por
-  defecto de siempre (descendente para `DEGREE`/`ACCESS_COUNT`/
-  `RELEVANCE`/`LAST_SEEN`/`FIRST_SEEN`, ascendente para `ID`/`NAME`).
-- Ejemplo combinado: `SHOW AUTORELATIONS products FROM p145 DEPTH 6
-  DIRECTION BOTH WHERE relevance >= 0.75 ORDER BY ACCESS_COUNT DESC
-  LIMIT 100 FORMAT TREE STATS VERBOSE;`
+## [Unreleased] — Storage AI: Adaptive BadgerDB Sizing by Block
 
-## [Unreleased] — Auto-relaciones temporales basadas en patrones de acceso
+**Fixed Issue:** Every block (new or existing) was opened with the same fixed BadgerDB options (`storage/constants.go`), so a nearly empty block occupied the same disk/RAM as one with hundreds of thousands of documents (~49MB reported). With many small blocks, this becomes a real space and memory problem.
 
-- **`relations_auto.go`, nuevo `AutoRelationManager`**: cuando un mismo
-  usuario lee repetidamente el mismo documento (por defecto, 5 lecturas
-  en 10 minutos), CaimanDB crea automáticamente una auto-relación
-  (self-relation) entre ese usuario y el documento — sin necesidad de
-  un `RELATE` explícito. Cada auto-relación guarda `access_count`,
-  `last_seen`, una puntuación de relevancia (`relevance`, combinando
-  frecuencia y recencia) y una pequeña muestra de metadatos clave del
-  documento (`key_metadata`, p. ej. `name`/`title`).
-- **Son datos temporales por diseño**: cada nuevo acceso extiende su
-  expiración (`auto_relation_ttl`, 24h por defecto); si el par
-  usuario-documento deja de accederse, la relación expira sola y un
-  barrido de fondo (`autoRelationCleanupLoop`, cada 5 min) la elimina.
-  No es un dato duradero — es una señal viva de "qué es relevante
-  ahora mismo".
-- **`FIND` y `GET <id>` alimentan el detector automáticamente**
-  (`cmd_find.go`): cada documento leído por una sesión se reporta al
-  `AutoRelationManager` con el usuario autenticado de esa sesión.
-- **`SHOW AUTORELATIONS <block>`** (`cmd_show_autorelations.go`,
-  `cmd_show_autorelations_render.go`, `relations_auto_graph.go`): comando
-  completo estilo consulta de grafo sobre ese conjunto de auto-relaciones
-  (bipartito y dirigido: `usuario -> documento leído`), con modificadores
-  `FROM`, `TO`, `DEPTH`, `DIRECTION IN|OUT|BOTH`, `FORMAT
-  TABLE|TREE|GRAPH|JSON`, `ORDER BY DEGREE|ID|NAME`, `LIMIT`, `OFFSET`,
-  `FILTER <expresión>` (reutiliza el mismo evaluador WHERE que `FIND`),
-  `STATS`, `SUMMARY`, `PATHS` (árbol del recorrido BFS desde `FROM`),
-  `ORPHANS` (pares aislados), `CYCLES` (detectados con union-find) y
-  `BROKEN` (relaciones cuyo documento fue borrado).
-- Nuevas opciones de configuración: `auto_relations_enabled`,
-  `auto_relation_threshold`, `auto_relation_window`,
-  `auto_relation_ttl`.
+**`internal/caimandb/storage/adaptive.go` (new):** 4 tiers of BadgerDB configuration (`micro`/`small`/`standard`/`large`). A block's tier is chosen, the first time it is opened in the process, based on what already exists on disk for that block (empty → `micro`) and adjusted against a shared RAM budget across all simultaneously opened blocks (default 50% of detected RAM via `/proc/meminfo`, configurable).
 
-## [Unreleased] — Consola web (ui/) real con panel de estado, conectada a datos en vivo del nodo
+**`storage/badger_pool.go`:** `DBPool` now performs this selection when opening each block (`OpenDataPath`/`OpenBlock`, without changing its public signature, so none of the ~20 existing call sites were touched) and releases the corresponding budget on close. New `DBPool.AdaptiveStats()` for observability (block count per tier, budget used/total).
 
-- **Consola `ui/` reescrita** con el aspecto de un cliente de base de
-  datos tipo Beekeeper Studio: rail de iconos con dos vistas (Editor de
-  consultas / Dashboard), pestañas de consulta reales, barra lateral
-  con las bases de datos y bloques del nodo, y panel de estado con
-  KPIs y gráficas. Todo el contenido sale de peticiones HTTP reales al
-  propio nodo — no hay datos de ejemplo ni `Math.random` en el cliente.
-- **`GET /entities`** (`http_query.go`), nuevo endpoint del servidor de
-  consultas: lista bases de datos (`Engine.ShowDBs`) y, para la base
-  activa, sus bloques con conteo real de documentos y tamaño
-  (`Engine.DescribeBlock`) — lo que alimenta la barra lateral y el
-  gráfico de documentos por bloque.
-- **`POST /query` ahora también devuelve `rows`/`columns`** para
-  comandos `FIND`/`GET`: una grilla de documentos estructurada
-  (re-ejecutando la misma lectura contra el motor), además del texto
-  de resultado que ya devolvía todo comando. Así el cliente puede
-  pintar una tabla real en vez de parsear la salida de texto pensada
-  para terminal.
-- **`L1Cache.Stats()` expone bytes crudos** (`used_bytes`, `max_bytes`,
-  `hit_ratio_pct`) junto a las cadenas ya formateadas, para que el
-  dashboard pueda calcular un porcentaje de uso de caché real sin
-  parsear strings tipo "128.00 MB".
+**New Configuration:** `storage_ai_enabled` (default `true`), `storage_ai_ram_fraction` (default `0.5`), `storage_ai_max_budget_mb` (default `0` = no explicit cap), with corresponding environment variables `CAIMANDB_STORAGE_AI_*`. `storage_ai_enabled=false` reproduces the exact original fixed behavior.
 
-## [Unreleased] — Motor de alto rendimiento: caché con sharding, WAL con group-commit y change streams en tiempo real
+**What It Does NOT Do Yet, Intentionally:** Does not hot-readjust a block that is already serving traffic (only classified on open). See [`docs/storage-ai-adaptive-sizing.md`](docs/storage-ai-adaptive-sizing.md) for complete analysis of why (reads in `ops_find.go` do not take the write lock, so closing/reopening the Badger handle under concurrent read traffic is not safe without more) and the recommended path to implement it with a compiler at hand.
 
-- **Caché L1/L2 con sharding (32 particiones)** (`cache.go`). Antes cada
-  caché tenía **un único mutex global** protegiendo todo el mapa + lista
-  LRU, así que cualquier lectura/escritura serializaba a todos los demás
-  hilos — el clásico cuello de botella bajo carga concurrente sostenida.
-  Ahora cada caché se parte en 32 shards independientes (hash `fnv32a`
-  ya usado por `shardedLockManager`), cada uno con su propio mutex, mapa
-  y lista LRU/presupuesto de bytes, así que la contención cae de "global"
-  a "1/32 de las claves". De paso se corrigió una **carrera de datos
-  real**: `L2IndexCache.get()` tomaba `RLock` pero mutaba campos
-  compartidos (`LastUsed`, `Frequency`) sin lock exclusivo. También se
-  reemplazó el acceso directo a `l1Cache.mu`/`l1Cache.items` en
-  `RenameDB` (que además tenía un **deadlock latente**: tomaba `Lock()`
-  y luego llamaba a `del()`, que vuelve a tomar el mismo mutex) por el
-  nuevo método `L1Cache.DeleteByPrefix`.
-- **WAL con I/O en buffer + fsync configurable (group commit)**
-  (`wal.go`). El WAL nunca hacía `fsync` — los datos quedaban en el
-  buffer del SO sin garantía real de durabilidad pese a llamarse
-  "Write-Ahead Log". Además cada entrada se escribía con
-  `json.Encoder.Encode` directo contra el `*os.File`, sin buffer (un
-  syscall por entrada). Ahora cada segmento usa un `bufio.Writer`, los
-  batches se codifican en memoria (reutilizando el buffer pool, que
-  antes se pedía pero nunca se usaba) para emitir **un solo `Write()`
-  por batch**, y hay una política de sync configurable
-  (`wal_sync_policy`: `always` / `interval` [default, group commit] /
-  `off`) que acota la ventana máxima de pérdida de datos sin pagar un
-  fsync por operación.
-- **`BufferPool` sin condición de carrera** (`buffer_pool.go`): los
-  contadores eran `int64` planos mutados desde múltiples goroutines sin
-  atomics.
-- **Change streams en tiempo real** (`changestream.go`): nuevo
-  `ChangeBus` (pub/sub en proceso) que publica eventos de
-  insert/update/delete conforme ocurren, con `Publish()` no bloqueante
-  (un suscriptor lento nunca frena el camino de escritura — su evento se
-  descarta y se cuenta en `caimandb_change_events_dropped_total`).
-  Expuesto vía SSE en el nuevo endpoint `GET /watch?db=...&block=...`
-  (`http_query.go`), con la conexión eximida del `WriteTimeout` global
-  del servidor (que si no cortaría el stream a los 30s) y heartbeat cada
-  15s para mantenerla viva a través de proxies/balanceadores.
+---
 
+## [Unreleased] — `SHOW AUTORELATIONS`: `WHERE` and `ORDER BY` with Direction
 
-- **Nuevo comando `EXPLAIN FIND ...` / `EXPLAIN SEARCH ...`**
-  (`cmd_explain.go`). Estilo "EXPLAIN ANALYZE": construye la consulta con
-  las mismas funciones que usa `FIND`/`SEARCH`
-  (`buildFindQuery`/`buildSearchQuery`, extraídas de `cmd_find.go` para
-  que EXPLAIN nunca pueda desincronizarse de lo que el comando real
-  hace), la ejecuta de verdad, y reporta lo medido: filas escaneadas,
-  filas encontradas, qué acceso se usó realmente (`Actual Access`), qué
-  índice habría elegido el optimizador para un top-level de igualdades/IN
-  (`Planned`, vía `QueryOptimizer.AnalyzeQuery`) -- y el árbol `WHERE`
-  parseado (`parse.Expr.String()`), útil ahora que soporta paréntesis y
-  precedencia. No inventa cifras que no midió (nada de "memoria usada"
-  ni "costo" ficticios).
-- **`SHOW DBS` y `SHOW BLOCKS` ahora aceptan uno o más nombres**
-  (`cmd_show_size.go`): `SHOW DBS`, `SHOW DBS nombre`, `SHOW DBS nombre1
-  nombre2`; igual para `SHOW BLOCKS [<db>] [nombre1 nombre2 ...]`. Si
-  algún nombre no existe, se reporta en una línea "Not found: ..." en
-  vez de fallar todo el comando. `SHOW DBS` además ahora incluye el
-  tamaño en disco de cada base (antes solo mostraba blocks/docs) y un
-  total agregado al final; `SHOW BLOCKS` ya mostraba tamaño por bloque y
-  ahora también agrega un total.
-- `docs/known-limitations.md` y `docs/nql-reference.md`: sin cambios en
-  este pase (ver el bloque anterior para el estado del AST); `help.go`
-  documenta la sintaxis nueva de `EXPLAIN` y `SHOW DBS/BLOCKS`.
-- **Alcance de este pase, explícito:** solo se implementó `EXPLAIN` y las
-  mejoras de `SHOW` pedidas. La visión más amplia de NQL discutida
-  (`USING`/`EXPAND` para relaciones sin estado global de `RELATE`,
-  `GROUP BY` dentro de `FIND`, funciones de agregación inline
-  (`COUNT()`/`SUM()`/...), `DISTINCT`, `PAGE`/`SIZE`, `FIND ... IDS`,
-  `FIND ... COUNT`, `FIND ... CACHE`, `ANALYZE FIND ...`) es un rediseño
-  bastante más grande del lenguaje y no se tocó en este pase para no
-  arriesgar cambios extensos sin poder compilar; queda pendiente si se
-  quiere abordar por partes.
-- **Sin verificar con `go build`/`go vet`** -- mismo aviso que el resto
-  de este changelog: sin Go ni red en este entorno. Revisado a mano con
-  atención especial a: que `buildFindQuery`/`buildSearchQuery` extraídas
-  de `cmd_find.go` preserven el comportamiento exacto de
-  `handleFind`/`handleSearch` (son el mismo código, solo movido a una
-  función parametrizada por el índice de inicio), que no queden imports
-  sin usar tras mover código entre archivos (`time` en
-  `cmd_create_show.go`), y que ningún nombre de función se repita.
-  Confírmalo con `go build ./... && go vet ./... && go test ./...`
-  antes de desplegar.
+**`WHERE <expression>`** (`cmd_show_autorelations.go`): Synonym for `FILTER` with the same condition syntax used by `FIND`/`SEARCH`/`VIEW`, on `doc_id`, `user_id`, `access_count`, `relevance`, `last_seen`, `first_seen`. `FILTER` remains for backward compatibility.
 
-## [Unreleased] — AST real para WHERE (paréntesis, precedencia, NOT)
+**`ORDER BY ... ASC|DESC`:** `ORDER BY` now accepts an explicit optional direction, and sortable fields are extended from `DEGREE|ID|NAME` to also include `ACCESS_COUNT`, `RELEVANCE`, `LAST_SEEN`, and `FIRST_SEEN`. Without `ASC`/`DESC`, each field retains its default direction (descending for `DEGREE`/`ACCESS_COUNT`/`RELEVANCE`/`LAST_SEEN`/`FIRST_SEEN`, ascending for `ID`/`NAME`).
 
-- Nuevo `internal/caimandb/parse/ast.go`: un parser recursivo-descendente
-  que compila una cláusula `WHERE` a un árbol de expresión (`Expr`)
-  real -- `KindCondition` (hoja) / `KindAnd` / `KindOr` / `KindNot` --
-  en vez de la lista plana `[]Filter` con un `Logic` por elemento que
-  se evaluaba estrictamente de izquierda a derecha. Soporta:
-  - Paréntesis para agrupar (`(a = 1 OR b = 2) AND c = 3`).
-  - Precedencia estándar `AND` > `OR` (antes no existía: la única
-    semántica posible era "de izquierda a derecha", así que
-    `a=1 OR b=2 AND c=3` no se podía escribir con su significado
-    habitual).
-  - `NOT` delante de una condición o de un grupo completo.
-  - Los mismos operadores y misma sintaxis de valores de siempre
-    (comillas, arrays/objetos JSON, `BETWEEN x AND y`, `IS [NOT] NULL`,
-    operadores de dos palabras) -- se preservó a propósito, incluida
-    una peculiaridad del parser original (un valor entre comillas
-    todavía pasa por la misma coerción numérica/booleana que uno sin
-    comillas).
-- `internal/caimandb/parse/tokenizer.go`: `(` y `)` ahora siempre se
-  emiten como tokens propios (antes solo se reconocían corchetes `[]`
-  y llaves `{}`), para que la agrupación del AST funcione sin exigir
-  espacios exactos alrededor de los paréntesis.
-- Conectado a `FIND` y `SEARCH` (`cmd_find.go`): nuevo
-  `parseWhereClause` en `cmd_filters_util.go` construye el árbol y,
-  además, una lista plana *best-effort* (solo cuando el árbol es una
-  cadena pura de `AND` de nivel superior) para no tocar el
-  planificador de índices existente (`QueryOptimizer.AnalyzeQuery`).
-  `Query` (`ops_find.go`) tiene un campo nuevo `Where *parse.Expr`;
-  `matchesQuery`/`evalExpr` (`query_filter.go`) evalúan el árbol
-  cuando está presente y si no caen al `matchesFilters` de siempre --
-  por diseño, todo lo demás que construye `[]Filter` directamente
-  (`JOIN`, transacciones, `VIEW`, admin) sigue exactamente igual que
-  antes de este cambio.
-- `docs/nql-reference.md` documenta la sintaxis nueva con ejemplos;
-  `docs/known-limitations.md` documenta qué comandos usan ya el AST y
-  cuáles siguen en el parser plano, con una ruta de migración.
-- **Sin verificar con `go build`/`go vet`** -- este entorno tampoco
-  tuvo acceso a un compilador de Go ni a red (mismo aviso que el resto
-  de este changelog). Revisado a mano con cuidado especial en los
-  puntos de integración (firma de `Query`, los dos call-sites de
-  `matchesFilters`, y que ningún literal `Query{...}` existente use
-  campos posicionales), pero confírmalo con `go build ./... && go vet
-  ./...` antes de desplegar.
+**Combined Example:** `SHOW AUTORELATIONS products FROM p145 DEPTH 6 DIRECTION BOTH WHERE relevance >= 0.75 ORDER BY ACCESS_COUNT DESC LIMIT 100 FORMAT TREE STATS VERBOSE;`
 
-## [Unreleased] — configs/caimandb.conf y primer subpaquete (parse/)
+---
 
-- `caimandb.conf` ahora se carga/crea en `configs/caimandb.conf` en vez
-  de la raíz del directorio de trabajo (`internal/caimandb/constants.go`,
-  `internal/caimandb/defaults.go`); `SaveToFile` crea la carpeta
-  `configs/` sola si hace falta. Actualizados `help.go`, `README.md`,
-  `docs/configuration.md`, `docs/architecture.md`,
-  `examples/quickstart.md` y `.gitignore` para reflejarlo.
-- Nuevo subpaquete `internal/caimandb/parse`: se movió el tokenizer de
-  la sintaxis NQL (`tokenize` → `parse.Tokenize`), el único archivo
-  del motor sin ninguna dependencia de `Engine`/`Document`/`Config`/
-  `Session`/`Filter`/`Transaction`. `dsl_parser.go` y `cmd_view.go`
-  ahora lo importan como `caimandb/internal/caimandb/parse`.
-- `docs/known-limitations.md` ampliado: documenta este primer split
-  seguro, incluye un filtro `grep` para encontrar más archivos "hoja"
-  candidatos, y mantiene la ruta recomendada (`httpapi`, `cluster`,
-  dejar `raft_fsm.go`/`transaction.go` en el núcleo) para quien
-  quiera seguir dividiendo el paquete con un compilador Go a mano.
+## [Unreleased] — Temporal Auto-Relations Based on Access Patterns
 
-## [Unreleased] — Reorganización del repositorio
+**`relations_auto.go`, new `AutoRelationManager`:** When the same user repeatedly reads the same document (default: 5 reads in 10 minutes), CaimanDB automatically creates an auto-relation (self-relation) between that user and the document — without requiring an explicit `RELATE`. Each auto-relation stores `access_count`, `last_seen`, a relevance score (`relevance`, combining frequency and recency), and a small sample of key document metadata (`key_metadata`, e.g., `name`/`title`).
 
-- Nueva estructura de carpetas a nivel de repo: `docs/` (con
-  `docs/api/`), `deployments/docker/`, `scripts/`, `configs/`,
-  `examples/`, `test/` (con `test/integration/` y `test/fixtures/`),
-  `.github/workflows/`.
-- Documentación nueva: arquitectura (`docs/architecture.md`),
-  referencia NQL completa (`docs/nql-reference.md`), API HTTP
-  (`docs/api/http-api.md`), configuración (`docs/configuration.md`),
-  limitaciones conocidas (`docs/known-limitations.md`).
-- Plantilla de configuración (`configs/caimandb.conf.example`) generada
-  a partir del struct `Config` real.
-- `Dockerfile` + `docker-compose.yml` para levantar CaimanDB en
-  contenedor.
-- Scripts de build/test/run (`scripts/*.sh`) y `Makefile`.
-- Workflow de CI en GitHub Actions (`go build`, `go vet`, `go test`,
-  `go mod tidy` check).
-- `internal/caimandb` se dejó intacto a propósito: es un único paquete
-  Go con más de 40 archivos acoplados al mismo `Engine` mediante
-  campos no exportados; dividirlo de verdad requiere exportar buena
-  parte de ese estado y verificarlo con un compilador, algo que no
-  fue posible confirmar en este entorno (ver
-  `docs/known-limitations.md`).
+**These are temporal data by design:** Each new access extends their expiration (`auto_relation_ttl`, 24h by default); if the user-document pair stops being accessed, the relation expires on its own and a background sweep (`autoRelationCleanupLoop`, every 5 min) removes it. This is not durable data — it's a live signal of "what is relevant right now."
 
-## Pase anterior — Corrección de compilación
+**`FIND` and `GET <id>` feed the detector automatically** (`cmd_find.go`): every document read by a session is reported to the `AutoRelationManager` with the authenticated user of that session.
 
-- Estructura `cmd/` + `internal/caimandb/` en vez de un directorio
-  plano de 68 archivos en la raíz.
-- Eliminada la redeclaración duplicada de `views`/`viewsMu`.
-- Implementados 11 manejadores NQL que `dsl_parser.go` referenciaba
-  pero no existían (`handleDrop`, `handleRename`, `handleInfo`,
-  `handleDescribe`, `handleStats`, `handleSize`, `handleRebuild`,
-  `handleCheck`, `handleRepair`, `handleFlexCommand`,
-  `handleTransaction`), en `cmd_admin_extra.go`.
-- Eliminados imports no usados de `github.com/hashicorp/raft` y
-  `errors` en 11 archivos.
+**`SHOW AUTORELATIONS <block>`** (`cmd_show_autorelations.go`, `cmd_show_autorelations_render.go`, `relations_auto_graph.go`): Full graph-like query command over that set of auto-relations (bipartite and directed: `user -> read document`), with modifiers `FROM`, `TO`, `DEPTH`, `DIRECTION IN|OUT|BOTH`, `FORMAT TABLE|TREE|GRAPH|JSON`, `ORDER BY DEGREE|ID|NAME`, `LIMIT`, `OFFSET`, `FILTER <expression>` (reuses the same WHERE evaluator as `FIND`), `STATS`, `SUMMARY`, `PATHS` (BFS traversal tree from `FROM`), `ORPHANS` (isolated pairs), `CYCLES` (detected with union-find), and `BROKEN` (relations whose document was deleted).
+
+**New Configuration Options:** `auto_relations_enabled`, `auto_relation_threshold`, `auto_relation_window`, `auto_relation_ttl`.
+
+---
+
+## [Unreleased] — Web Console (ui/) with Real Status Panel, Connected to Live Node Data
+
+**`ui/` Console Rewritten** with the look and feel of a Beekeeper Studio-style database client: icon rail with two views (Query Editor / Dashboard), real query tabs, sidebar with databases and node blocks, and status panel with KPIs and charts. All content comes from real HTTP requests to the node itself — no sample data or `Math.random` on the client.
+
+**`GET /entities`** (`http_query.go`), new query server endpoint: lists databases (`Engine.ShowDBs`) and, for the active database, its blocks with real document counts and sizes (`Engine.DescribeBlock`) — feeding the sidebar and block document chart.
+
+**`POST /query` now also returns `rows`/`columns`** for `FIND`/`GET` commands: a structured document grid (re-executing the same read against the engine), in addition to the result text that all commands already returned. This allows the client to render a real table instead of parsing text output designed for the terminal.
+
+**`L1Cache.Stats()` exposes raw bytes** (`used_bytes`, `max_bytes`, `hit_ratio_pct`) alongside already-formatted strings, so the dashboard can calculate a real cache usage percentage without parsing strings like "128.00 MB".
+
+---
+
+## [Unreleased] — High-Performance Engine: Sharded Cache, WAL with Group Commit, and Real-Time Change Streams
+
+**L1/L2 Cache with Sharding (32 partitions)** (`cache.go`). Previously each cache had **a single global mutex** protecting the entire map + LRU list, so any read/write serialized all other threads — the classic bottleneck under sustained concurrent load. Now each cache is split into 32 independent shards (using `fnv32a` hash already used by `shardedLockManager`), each with its own mutex, map, and LRU list/byte budget, reducing contention from "global" to "1/32 of keys." A **real data race** was also fixed: `L2IndexCache.get()` took `RLock` but mutated shared fields (`LastUsed`, `Frequency`) without exclusive lock. Direct access to `l1Cache.mu`/`l1Cache.items` in `RenameDB` (which also had a **latent deadlock**: took `Lock()` then called `del()`, which re-acquires the same mutex) was replaced with the new `L1Cache.DeleteByPrefix` method.
+
+**WAL with Buffered I/O + Configurable fsync (Group Commit)** (`wal.go`). The WAL never performed `fsync` — data remained in the OS buffer without real durability guarantees despite being called "Write-Ahead Log." Each entry was also written with `json.Encoder.Encode` directly against the `*os.File`, without buffering (one syscall per entry). Now each segment uses a `bufio.Writer`, batches are encoded in memory (reusing the buffer pool, which was previously allocated but never used) to emit **a single `Write()` per batch**, and there is a configurable sync policy (`wal_sync_policy`: `always` / `interval` [default, group commit] / `off`) that caps the maximum data loss window without paying an fsync per operation.
+
+**`BufferPool` Without Data Race** (`buffer_pool.go`): counters were plain `int64` mutated from multiple goroutines without atomics.
+
+**Real-Time Change Streams** (`changestream.go`): New `ChangeBus` (in-process pub/sub) that publishes insert/update/delete events as they occur, with non-blocking `Publish()` (a slow subscriber never slows the write path — its event is dropped and counted in `caimandb_change_events_dropped_total`). Exposed via SSE at the new endpoint `GET /watch?db=...&block=...` (`http_query.go`), with the connection exempted from the global server `WriteTimeout` (which would otherwise cut the stream at 30s) and a heartbeat every 15s to keep it alive through proxies/load balancers.
+
+---
+
+## [Unreleased] — New `EXPLAIN FIND ...` / `EXPLAIN SEARCH ...` Command
+
+(`cmd_explain.go`). "EXPLAIN ANALYZE" style: builds the query with the same functions used by `FIND`/`SEARCH` (`buildFindQuery`/`buildSearchQuery`, extracted from `cmd_find.go` so EXPLAIN can never desynchronize from what the actual command does), executes it for real, and reports measured metrics: rows scanned, rows found, what access was actually used (`Actual Access`), what index the optimizer would have chosen for top-level equalities/IN (`Planned`, via `QueryOptimizer.AnalyzeQuery`) -- and the parsed `WHERE` tree (`parse.Expr.String()`), useful now that it supports parentheses and precedence. Does not invent numbers it didn't measure (no "memory used" or fictional "cost").
+
+**`SHOW DBS` and `SHOW BLOCKS` Now Accept One or More Names** (`cmd_show_size.go`): `SHOW DBS`, `SHOW DBS name`, `SHOW DBS name1 name2`; same for `SHOW BLOCKS [<db>] [name1 name2 ...]`. If any name doesn't exist, it's reported on a "Not found: ..." line instead of failing the entire command. `SHOW DBS` now also includes on-disk size per database (previously only showed blocks/docs) and a total aggregate at the end; `SHOW BLOCKS` already showed size per block and now also aggregates a total.
+
+`docs/known-limitations.md` and `docs/nql-reference.md`: unchanged in this pass (see previous block for AST status); `help.go` documents the new `EXPLAIN` and `SHOW DBS/BLOCKS` syntax.
+
+**Scope of This Pass, Explicitly:** Only `EXPLAIN` and the requested `SHOW` improvements were implemented. The broader NQL vision discussed (`USING`/`EXPAND` for relations without global `RELATE` state, `GROUP BY` inside `FIND`, inline aggregation functions (`COUNT()`/`SUM()`/...), `DISTINCT`, `PAGE`/`SIZE`, `FIND ... IDS`, `FIND ... COUNT`, `FIND ... CACHE`, `ANALYZE FIND ...`) is a significantly larger language redesign and was not touched in this pass to avoid risking extensive changes without being able to compile; it remains pending if it should be approached incrementally.
+
+**Not Verified with `go build`/`go vet`** — same caveat as the rest of this changelog: no Go or network in this environment. Manually reviewed with special attention to: that `buildFindQuery`/`buildSearchQuery` extracted from `cmd_find.go` preserve the exact behavior of `handleFind`/`handleSearch` (they are the same code, only moved to a function parameterized by starting index), that no unused imports remain after moving code between files (`time` in `cmd_create_show.go`), and that no function names are duplicated. Confirm with `go build ./... && go vet ./... && go test ./...` before deploying.
+
+---
+
+## [Unreleased] — Real AST for WHERE (Parentheses, Precedence, NOT)
+
+New `internal/caimandb/parse/ast.go`: a recursive-descent parser that compiles a `WHERE` clause into a real expression tree (`Expr`) -- `KindCondition` (leaf) / `KindAnd` / `KindOr` / `KindNot` -- instead of the flat `[]Filter` list with one `Logic` per element that was evaluated strictly left-to-right. Supports:
+- Parentheses for grouping (`(a = 1 OR b = 2) AND c = 3`).
+- Standard precedence `AND` > `OR` (previously nonexistent: the only possible semantics was "left-to-right", so `a=1 OR b=2 AND c=3` couldn't be written with its usual meaning).
+- `NOT` before a condition or a complete group.
+- Same operators and same value syntax as always (quotes, JSON arrays/objects, `BETWEEN x AND y`, `IS [NOT] NULL`, two-word operators) -- intentionally preserved, including a peculiarity of the original parser (a quoted value still goes through the same numeric/boolean coercion as an unquoted one).
+
+`internal/caimandb/parse/tokenizer.go`: `(` and `)` are now always emitted as proper tokens (previously only brackets `[]` and braces `{}` were recognized), so AST grouping works without requiring exact spaces around parentheses.
+
+Connected to `FIND` and `SEARCH` (`cmd_find.go`): new `parseWhereClause` in `cmd_filters_util.go` builds the tree and, additionally, a best-effort flat list (only when the tree is a pure chain of top-level `AND`) to avoid touching the existing index planner (`QueryOptimizer.AnalyzeQuery`). `Query` (`ops_find.go`) has a new field `Where *parse.Expr`; `matchesQuery`/`evalExpr` (`query_filter.go`) evaluate the tree when present and otherwise fall back to `matchesFilters` as before -- by design, everything else that constructs `[]Filter` directly (`JOIN`, transactions, `VIEW`, admin) remains exactly as before this change.
+
+`docs/nql-reference.md` documents the new syntax with examples; `docs/known-limitations.md` documents which commands already use the AST and which remain on the flat parser, with a migration path.
+
+**Not Verified with `go build`/`go vet`** — this environment also had no access to a Go compiler or network (same caveat as the rest of this changelog). Manually reviewed with special care at integration points (signature of `Query`, the two call-sites of `matchesFilters`, and that no existing positional `Query{...}` literal uses positional fields), but confirm with `go build ./... && go vet ./...` before deploying.
+
+---
+
+## [Unreleased] — configs/caimandb.conf and First Subpackage (parse/)
+
+`caimandb.conf` now loads/creates from `configs/caimandb.conf` instead of the root working directory (`internal/caimandb/constants.go`, `internal/caimandb/defaults.go`); `SaveToFile` creates the `configs/` folder itself if needed. Updated `help.go`, `README.md`, `docs/configuration.md`, `docs/architecture.md`, `examples/quickstart.md`, and `.gitignore` to reflect this.
+
+New subpackage `internal/caimandb/parse`: the NQL syntax tokenizer (`tokenize` → `parse.Tokenize`) was moved here — the only engine file with no dependencies on `Engine`/`Document`/`Config`/`Session`/`Filter`/`Transaction`. `dsl_parser.go` and `cmd_view.go` now import it as `caimandb/internal/caimandb/parse`.
+
+`docs/known-limitations.md` expanded: documents this first safe split, includes a `grep` filter for finding more "leaf" file candidates, and maintains the recommended path (`httpapi`, `cluster`, leaving `raft_fsm.go`/`transaction.go` in the core) for anyone who wants to continue splitting the package with a Go compiler at hand.
+
+---
+
+## [Unreleased] — Repository Reorganization
+
+New folder structure at repo level: `docs/` (with `docs/api/`), `deployments/docker/`, `scripts/`, `configs/`, `examples/`, `test/` (with `test/integration/` and `test/fixtures/`), `.github/workflows/`.
+
+New documentation: architecture (`docs/architecture.md`), complete NQL reference (`docs/nql-reference.md`), HTTP API (`docs/api/http-api.md`), configuration (`docs/configuration.md`), known limitations (`docs/known-limitations.md`).
+
+Configuration template (`configs/caimandb.conf.example`) generated from the actual `Config` struct.
+
+`Dockerfile` + `docker-compose.yml` for running CaimanDB in a container.
+
+Build/test/run scripts (`scripts/*.sh`) and `Makefile`.
+
+GitHub Actions CI workflow (`go build`, `go vet`, `go test`, `go mod tidy` check).
+
+`internal/caimandb` was intentionally left intact: it is a single Go package with over 40 files coupled to the same `Engine` via unexported fields; truly splitting it requires exporting much of that state and verifying with a compiler, something that could not be confirmed in this environment (see `docs/known-limitations.md`).
+
+---
+
+## Previous Pass — Compilation Fixes
+
+`cmd/` + `internal/caimandb/` structure instead of a flat directory of 68 files in the root.
+
+Removed duplicate redeclaration of `views`/`viewsMu`.
+
+Implemented 11 NQL handlers that `dsl_parser.go` referenced but did not exist (`handleDrop`, `handleRename`, `handleInfo`, `handleDescribe`, `handleStats`, `handleSize`, `handleRebuild`, `handleCheck`, `handleRepair`, `handleFlexCommand`, `handleTransaction`), in `cmd_admin_extra.go`.
+
+Removed unused imports of `github.com/hashicorp/raft` and `errors` in 11 files.
