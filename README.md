@@ -12,9 +12,9 @@
 
 ### NQL (Native Query Language)
 
-- **Issue Reporting**: [GitHub Issues](https://github.com/Horinsoft/caimandb/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Horinsoft/caimandb/discussions)
-- **Documentation**: [Project Wiki](https://github.com/Horinsoft/caimandb/wiki)
+- **Nql english**: [GitHub Issues](https://github.com/Horinsoft/caimandb/docs/NQL_SYNTAX.en.md)
+- **Nql español**: [GitHub Discussions](https://github.com/Horinsoft/caimandb/docs/NQL_SYNTAX.es.md)
+- **Nql desland**: [Project Wiki](https://github.com/Horinsoft/caimandb/docs/NQL_SYNTAX.de.md)
 - **Website**: [https://caimandb.io](https://caimandb.io)
 
 ---
