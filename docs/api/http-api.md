@@ -1,7 +1,3 @@
-Here's the English version of the HTTP API document:
-
----
-
 # HTTP API
 
 CaimanDB exposes two independent HTTP servers, each on its own
