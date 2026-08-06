@@ -384,7 +384,9 @@ WantedBy=multi-user.target
 
 ### NQL (Native Query Language)
 
-
+[`docs/architecture.md`](docs/architecture.md)
+[`docs/architecture.md`](docs/architecture.md)
+[`docs/architecture.md`](docs/architecture.md)
 
 ## Documentation
 
