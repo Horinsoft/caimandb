@@ -1,45 +1,35 @@
-# Contribuir a CaimanDB
+# Contributing to CaimanDB
 
-## Antes de nada
+## Before You Begin
 
-Este repositorio se preparó/reorganizó en un entorno sin toolchain de
-Go ni acceso a red, así que **nada aquí se compiló realmente**. Antes
-de tu primer cambio:
+Before your first change:
 
 ```bash
 go build ./...
 go vet ./...
 ```
 
-y reporta cualquier error — es lo primero que hay que arreglar.
+and report any errors — this is the first thing that needs to be fixed.
 
-## Estructura
+## Structure
 
-Ver [`docs/architecture.md`](docs/architecture.md) para el mapa
-completo del código. Resumen rápido:
+See [`docs/architecture.md`](docs/architecture.md) for the complete code map. Quick summary:
 
-- `cmd/caimandb/` — punto de entrada, no debería crecer.
-- `internal/caimandb/` — todo el motor (un solo paquete Go, ver
-  [`docs/known-limitations.md`](docs/known-limitations.md) para el
-  porqué). Agrupa tu archivo nuevo con el prefijo que le corresponda
-  (`ops_`, `cmd_`, `http_`, etc.) en vez de crear una carpeta nueva.
-- `docs/` — documentación.
+- `cmd/caimandb/` — entry point, should not grow.
+- `internal/caimandb/` — the entire engine (a single Go package, see [`docs/known-limitations.md`](docs/known-limitations.md) for the rationale). Group your new file with the appropriate prefix (`ops_`, `cmd_`, `http_`, etc.) instead of creating a new folder.
+- `docs/` — documentation.
 - `deployments/` — Docker/compose.
 - `scripts/` — build/test/run.
-- `test/` — integración y fixtures.
+- `test/` — integration and fixtures.
 
-## Estilo
+## Style
 
-- `gofmt -l .` no debería devolver nada antes de un PR.
-- Sigue la convención de prefijos de archivo ya existente en
-  `internal/caimandb/`.
-- Los comandos NQL nuevos van en `cmd_*.go` + su entrada en
-  `dsl_parser.go` + documentación en `docs/nql-reference.md` y en el
-  texto de `HELP` (`help.go`).
+- `gofmt -l .` should return nothing before a PR.
+- Follow the existing file prefix convention in `internal/caimandb/`.
+- New NQL commands go in `cmd_*.go` + their entry in `dsl_parser.go` + documentation in `docs/nql-reference.md` and in the `HELP` text (`help.go`).
 
-## Pull requests
+## Pull Requests
 
-1. Rama descriptiva (`fix/...`, `feat/...`).
-2. `go build ./... && go vet ./... && go test ./...` en verde.
-3. Actualiza la documentación afectada (`docs/`, `README.md`,
-   `CHANGELOG.md`).
+1. Descriptive branch (`fix/...`, `feat/...`).
+2. `go build ./... && go vet ./... && go test ./...` in green.
+3. Update affected documentation (`docs/`, `README.md`, `CHANGELOG.md`).
