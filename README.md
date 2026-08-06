@@ -358,7 +358,7 @@ WantedBy=multi-user.target
 
 **Executing Individual Commands:**
 ```bash
-./bin/caimandb exec "SELECT * FROM users"
+./bin/caimandb exec "ls"
 ```
 
 **Administration Commands:**
