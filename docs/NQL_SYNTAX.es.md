@@ -1,7 +1,3 @@
-Entendido. Quieres que el índice tenga exactamente ese formato (sin números) y cada elemento sea un enlace al encabezado correspondiente. Aquí está el documento completo:
-
----
-
 # CaimanDB NQL — Referencia Completa de Sintaxis (Español)
 
 Otros idiomas: [English](./NQL_SYNTAX.en.md) · [Deutsch](./NQL_SYNTAX.de.md)
