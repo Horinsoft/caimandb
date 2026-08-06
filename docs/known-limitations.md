@@ -1,92 +1,91 @@
-# Limitaciones conocidas
+# Known Limitations
 
-## El AST de WHERE solo lo usan `FIND` y `SEARCH` todavía
+## The WHERE AST is still only used by FIND and SEARCH
 
-`internal/caimandb/parse/ast.go` añade un árbol de expresión real para
-`WHERE` (`ParseWhere`): soporta paréntesis, `NOT`, y precedencia
-estándar de `AND`/`OR` (antes no existía ninguna de las tres cosas --
-ver el comentario al principio de ese archivo para el porqué). Está
-conectado a `FIND` y `SEARCH` (`handleFind`/`handleSearch` en
-`cmd_find.go`, vía `parseWhereClause` en `cmd_filters_util.go` y
-`matchesQuery`/`evalExpr` en `query_filter.go`).
+`internal/caimandb/parse/ast.go` adds a real expression tree for
+`WHERE` (`ParseWhere`): supports parentheses, `NOT`, and standard
+`AND`/`OR` precedence (previously none of these three existed — see
+the comment at the top of that file for why). It's connected to
+`FIND` and `SEARCH` (`handleFind`/`handleSearch` in
+`cmd_find.go`, via `parseWhereClause` in `cmd_filters_util.go` and
+`matchesQuery`/`evalExpr` in `query_filter.go`).
 
-El resto de comandos con `WHERE` -- `UPDATE`, `DELETE`,
-`CLEAR`/`COUNT`, las agregaciones (`SUM`/`AVG`/...), `VIEW CREATE` y
-los comandos de admin -- siguen usando `parseFilters`
-(`cmd_filters_util.go`), el parser plano original: sin paréntesis, sin
-`NOT`, y evaluado estrictamente de izquierda a derecha. Migrarlos es
-mecánico (mismo patrón `tokens []string, idx *int`: cambiar la llamada
-a `parseFilters` por `parseWhereClause` y decidir, comando por
-comando, si ese comando necesita seguir alimentando un `[]Filter`
-plano en algún otro sitio -- p. ej. `transaction.go` y `raft_fsm.go`
-podrían serializar/reproducir filtros en el WAL/Raft log, así que hay
-que confirmar eso con el compilador antes de tocarlos), pero no se
-hizo en este pase para mantener acotado el riesgo sin poder compilar
-(ver más abajo). Candidatos, en orden razonable:
+The rest of the commands with `WHERE` — `UPDATE`, `DELETE`,
+`CLEAR`/`COUNT`, aggregations (`SUM`/`AVG`/...), `VIEW CREATE` and
+admin commands — still use `parseFilters`
+(`cmd_filters_util.go`), the original flat parser: no parentheses, no
+`NOT`, and evaluated strictly left-to-right. Migrating them is
+mechanical (same pattern `tokens []string, idx *int`: change the call
+from `parseFilters` to `parseWhereClause` and decide, command by
+command, whether that command still needs to feed a flat `[]Filter`
+somewhere else — e.g. `transaction.go` and `raft_fsm.go` might
+serialize/replay filters in the WAL/Raft log, so that needs to be
+verified with the compiler before touching them), but it wasn't done
+in this pass to keep the risk contained without being able to compile
+(see below). Candidates, in reasonable order:
 
-1. `DELETE` / `CLEAR`+`COUNT` (`cmd_delete.go`, `cmd_clear_count.go`) --
-   ya son de un único bloque de `Filter`s sin la complicación de
-   `transaction.go`/`raft_fsm.go`.
-2. Agregaciones (`cmd_aggregate.go`) -- misma forma.
-3. `UPDATE` (`cmd_update.go`) y `VIEW CREATE` (`cmd_view.go`) -- revisar
-   antes si `ViewDefinition.Filters` o el registro de transacciones
-   necesitan serializar el filtro (JSON, WAL, Raft) en algún punto; si
-   es así, añadir también la serialización de `parse.Expr` antes de
-   cambiar el parser que los produce.
+1. `DELETE` / `CLEAR`+`COUNT` (`cmd_delete.go`, `cmd_clear_count.go`) —
+   they're already a single block of `Filter`s without the
+   complication of `transaction.go`/`raft_fsm.go`.
+2. Aggregations (`cmd_aggregate.go`) — same shape.
+3. `UPDATE` (`cmd_update.go`) and `VIEW CREATE` (`cmd_view.go`) —
+   check first whether `ViewDefinition.Filters` or transaction
+   logging need to serialize the filter (JSON, WAL, Raft) somewhere;
+   if so, add serialization for `parse.Expr` as well before changing
+   the parser that produces them.
 
-## `internal/caimandb` sigue siendo un solo paquete Go
+## `internal/caimandb` remains a single Go package
 
-Es la limitación más relevante y la razón por la que este pase de
-reorganización se centró en la estructura del **repositorio**
-(carpetas `docs/`, `deployments/`, `scripts/`, `configs/`, `examples/`,
-`test/`, CI) y no en dividir el paquete Go en sí.
+This is the most significant limitation and the reason why this
+reorganization pass focused on **repository** structure
+(`docs/`, `deployments/`, `scripts/`, `configs/`, `examples/`,
+`test/`, CI) rather than splitting the Go package itself.
 
-Se investigó de forma concreta qué haría falta para dividirlo en
-paquetes como `internal/engine`, `internal/storage`,
-`internal/cluster`, `internal/httpapi`, etc. Resultado del análisis
-estático (grep de accesos `.campo` / `.método` no exportados entre
-archivos):
+We did a concrete investigation of what it would take to split it
+into packages like `internal/engine`, `internal/storage`,
+`internal/cluster`, `internal/httpapi`, etc. Result of static
+analysis (grep for access to unexported `.field` / `.method` across
+files):
 
-- Archivos como `raft_fsm.go` y `transaction.go` acceden directamente
-  a más de diez campos/métodos **no exportados** del `Engine` de
-  subsistemas distintos (`engine.pool`, `engine.dirMgr`,
+- Files like `raft_fsm.go` and `transaction.go` directly access more
+  than ten **unexported** fields/methods of `Engine` from different
+  subsystems (`engine.pool`, `engine.dirMgr`,
   `engine.cacheKey`, `engine.lockManager`, `engine.l1Cache`,
   `engine.shardMgr`, `engine.externalStore`, `engine.intelEngine`,
-  `engine.flexEngine`, `engine.buildSecondaryIndex`, ...). Moverlos a
-  otro paquete obligaría a exportar buena parte del estado interno
-  del motor.
-- Varios subsistemas (`cluster.go`, `dist_query.go`, `flexcolumn.go`,
+  `engine.flexEngine`, `engine.buildSecondaryIndex`, ...). Moving them
+  to another package would require exporting a good portion of the
+  engine's internal state.
+- Several subsystems (`cluster.go`, `dist_query.go`, `flexcolumn.go`,
   `http_admin.go`, `http_query.go`, `shard_manager.go`,
-  `transaction.go`) guardan una referencia de vuelta al propio
-  `*Engine` (`engine *Engine`). Si esos tipos se moviesen a paquetes
-  separados mientras `Engine` los mantiene como campos, se produciría
-  un ciclo de imports; evitarlo correctamente requiere invertir la
-  dependencia con interfaces (definir en el paquete nuevo solo los
-  métodos que de verdad usa, y que `Engine` los satisfaga
-  implícitamente). Es un cambio real y razonable, pero mecánico y
-  extenso, y con alto riesgo de romper una build de 15 000+ líneas si
-  se hace sin un compilador que confirme cada punto de uso.
+  `transaction.go`) hold a reference back to the `*Engine` itself
+  (`engine *Engine`). If those types were moved to separate packages
+  while `Engine` kept them as fields, it would create an import cycle;
+  avoiding it properly requires inverting the dependency with
+  interfaces (define in the new package only the methods it actually
+  uses, and have `Engine` satisfy them implicitly). This is a real
+  and reasonable change, but mechanical and extensive, with high risk
+  of breaking a 15,000+ line build if done without a compiler to
+  confirm every usage point.
 
-Este entorno no tiene acceso a red ni a un toolchain de Go instalado,
-así que no había forma de compilar y confirmar un cambio de ese
-tamaño. Se optó por no aplicarlo a ciegas.
+This environment has no network access nor a Go toolchain installed,
+so there was no way to compile and confirm a change of that size. We
+chose not to apply it blindly.
 
-### Lo que ya se separó: `internal/caimandb/parse`
+### What was already separated: `internal/caimandb/parse`
 
-`tokenizer.go` (la función `tokenize`, ahora `parse.Tokenize`) no
-tenía ninguna referencia a `Engine`, `Document`, `Config`, `Session`,
-`Filter` ni `Transaction` — solo `strings` de la librería estándar.
-Al ser un archivo "hoja" de verdad (cero acoplamiento, no solo
-acoplamiento bajo), se movió sin necesidad de exportar nada del
-motor ni de arriesgar un ciclo de imports. Los dos puntos que lo
-llamaban (`dsl_parser.go`, `cmd_view.go`) ahora importan
-`caimandb/internal/caimandb/parse`.
+`tokenizer.go` (the `tokenize` function, now `parse.Tokenize`) had no
+references to `Engine`, `Document`, `Config`, `Session`, `Filter` or
+`Transaction` — only standard library `strings`. Being a true "leaf"
+file (zero coupling, not just low coupling), it was moved without
+needing to export anything from the engine or risking an import cycle.
+The two places that called it (`dsl_parser.go`, `cmd_view.go`) now
+import `caimandb/internal/caimandb/parse`.
 
-### Si se quiere ir más lejos
+### If you want to go further
 
-Es un trabajo abordable con un compilador Go a mano (local o CI),
-subsistema por subsistema. Un primer filtro rápido para encontrar
-más candidatos "hoja" como `parse`:
+This is achievable work with a Go compiler available (local or CI),
+subsystem by subsystem. A quick first filter to find more "leaf"
+candidates like `parse`:
 
 ```bash
 cd internal/caimandb
@@ -95,40 +94,38 @@ for f in *.go; do
 done
 ```
 
-Eso señala ~18 archivos (`auth_jwt.go`, `cache.go`, `buffer_pool.go`,
+That points to ~18 files (`auth_jwt.go`, `cache.go`, `buffer_pool.go`,
 `compression.go`, `ratelimit.go`, `audit.go`, `logging.go`,
 `metrics.go`, `locks.go`, `worker_pool.go`, `storage_external.go`,
-`raft_logstore.go`, `misc_utils.go`, `nested_fields.go`, entre otros)
-que no referencian los tipos centrales del motor por nombre — son
-buenos candidatos a paquetes propios, pero **antes de moverlos** hay
-que revisar el acoplamiento *entre ellos* (p. ej. si varios comparten
-`log()` de `logging.go` o un tipo de caché), cosa que este filtro no
-detecta. Después de eso, en orden de menor a mayor acoplamiento con
-el `Engine`:
+`raft_logstore.go`, `misc_utils.go`, `nested_fields.go`, among others)
+that don't reference the core engine types by name — they're good
+candidates for their own packages, but **before moving them** you need
+to check the coupling *between them* (e.g. if several share `log()` from
+`logging.go` or a cache type), which this filter doesn't detect. After
+that, in order of least to most coupling with `Engine`:
 
-1. `internal/httpapi` — mover `http_admin.go` y `http_query.go`;
-   solo requiere exportar ~10 campos del `Engine`
+1. `internal/httpapi` — move `http_admin.go` and `http_query.go`;
+   only requires exporting ~10 fields from `Engine`
    (`nodeID`, `startupTime`, `opCount`, `l1Cache`, `metrics`,
-   `tokenManager`, `cluster`, `flexEngine`, `shardMgr`, `config`) vía
+   `tokenManager`, `cluster`, `flexEngine`, `shardMgr`, `config`) via
    getters.
-2. `internal/cluster` — mover `cluster.go`, `dist_query.go`,
-   `flexcolumn.go`, `shard_manager.go`; acoplamiento moderado.
-3. Dejar `raft_fsm.go` y `transaction.go` en el paquete núcleo
-   (`internal/engine`) — son los que más profundamente tocan el
-   estado interno y los que menos beneficio/riesgo tienen al
-   separarlos.
+2. `internal/cluster` — move `cluster.go`, `dist_query.go`,
+   `flexcolumn.go`, `shard_manager.go`; moderate coupling.
+3. Leave `raft_fsm.go` and `transaction.go` in the core package
+   (`internal/engine`) — they're the ones that touch internal state
+   most deeply and have the least benefit/risk to separate.
 
-Cada paso debería terminar con `go build ./... && go vet ./...` antes
-de pasar al siguiente.
+Each step should end with `go build ./... && go vet ./...` before
+moving to the next.
 
-## `go.sum` no verificado
+## `go.sum` not verified
 
-`go.mod` se mantiene igual que en el proyecto original. Ejecuta
-`go mod tidy` en tu máquina tras el primer build exitoso para
-confirmar que `go.sum` es consistente.
+`go.mod` remains the same as in the original project. Run
+`go mod tidy` on your machine after the first successful build to
+confirm `go.sum` is consistent.
 
-## Sin suite de pruebas automatizadas
+## No automated test suite
 
-El proyecto original no traía tests. Se añadió `test/` con una
-plantilla y una guía (`test/README.md`) para empezar, pero no se
-inventaron pruebas que simulen cobertura que no existe.
+The original project didn't include tests. `test/` was added with a
+template and a guide (`test/README.md`) to get started, but no tests
+were invented that simulate coverage that doesn't exist.
