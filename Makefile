@@ -1,7 +1,7 @@
 .PHONY: build run test vet tidy docker clean
 
 build:
-	./build.sh
+	./scripts/build.sh
 
 run:
 	./scripts/run-dev.sh
