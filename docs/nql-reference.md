@@ -1,35 +1,35 @@
-# Referencia de NQL (CaimanDB Query Language)
+# NQL Reference (CaimanDB Query Language)
 
-Este documento resume el contenido del comando `HELP` interactivo
-(`internal/caimandb/help.go`), organizado por categoría.
+This document summarizes the content of the interactive `HELP` command
+(`internal/caimandb/help.go`), organized by category.
 
-## Bases de datos
+## Databases
 
-| Comando | Descripción |
+| Command | Description |
 |---|---|
-| `CREATE DB <name>` | Crear una base de datos |
-| `DROP DB <name>` | Eliminar una base de datos |
-| `RENAME DB <old> TO <new>` | Renombrar una base de datos |
-| `USE <name>` | Cambiar de base de datos activa |
-| `SHOW DBS` | Listar bases de datos |
-| `INFO DB <name>` / `DESCRIBE DB <name>` | Detalle / esquema |
-| `STATS DB [<name>]` / `SIZE DB [<name>]` | Estadísticas / tamaño |
-| `COMPACT <db>` | Recolección de basura |
-| `ANALYZE DB` / `OPTIMIZE DB` | Análisis y optimización |
-| `BACKUP <db> TO <file>` / `RESTORE <db> FROM <file>` | Copias de seguridad |
+| `CREATE DB <name>` | Create a database |
+| `DROP DB <name>` | Delete a database |
+| `RENAME DB <old> TO <new>` | Rename a database |
+| `USE <name>` | Switch active database |
+| `SHOW DBS` | List databases |
+| `INFO DB <name>` / `DESCRIBE DB <name>` | Details / schema |
+| `STATS DB [<name>]` / `SIZE DB [<name>]` | Statistics / size |
+| `COMPACT <db>` | Garbage collection |
+| `ANALYZE DB` / `OPTIMIZE DB` | Analysis and optimization |
+| `BACKUP <db> TO <file>` / `RESTORE <db> FROM <file>` | Backups |
 
-## Bloques (colecciones)
+## Blocks (collections)
 
-| Comando | Descripción |
+| Command | Description |
 |---|---|
-| `CREATE BLOCK [<db>] <name>` | Crear un bloque |
-| `DROP BLOCK [<db>] <name>` | Eliminar un bloque |
-| `RENAME BLOCK [<db>] <old> TO <new>` | Renombrar |
-| `SHOW BLOCKS [<db>]` | Listar bloques |
-| `EMPTY BLOCK [<db>] <name>` / `CLEAR [<db>] <name>` | Vaciar bloque |
-| `REBUILD BLOCK` / `CHECK BLOCK` / `REPAIR BLOCK` | Mantenimiento de índices/integridad |
+| `CREATE BLOCK [<db>] <name>` | Create a block |
+| `DROP BLOCK [<db>] <name>` | Delete a block |
+| `RENAME BLOCK [<db>] <old> TO <new>` | Rename |
+| `SHOW BLOCKS [<db>]` | List blocks |
+| `EMPTY BLOCK [<db>] <name>` / `CLEAR [<db>] <name>` | Empty block |
+| `REBUILD BLOCK` / `CHECK BLOCK` / `REPAIR BLOCK` | Index/integrity maintenance |
 
-## Documentos — INSERT
+## Documents — INSERT
 
 ```sql
 INSERT users {"name": "John", "age": 30}
@@ -39,7 +39,7 @@ INSERT users [{"name": "John"}, {"name": "Jane"}]
 INSERT users FROM "file.json"
 ```
 
-## Documentos — FIND
+## Documents — FIND
 
 ```sql
 FIND users WHERE age > 18 AND status = "active"
@@ -49,41 +49,40 @@ FIND users WHERE age > 18 LIMIT 50 OFFSET 100
 GET users <id>
 ```
 
-### WHERE con paréntesis, precedencia y NOT (FIND / SEARCH)
+### WHERE with parentheses, precedence and NOT (FIND / SEARCH)
 
-`FIND` y `SEARCH` compilan la cláusula `WHERE` a un árbol de expresión
-real (AST) en `internal/caimandb/parse/ast.go`, en vez del encadenado
-plano izquierda-a-derecha que usan todavía el resto de comandos
-(`UPDATE`, `DELETE`, `COUNT`, agregaciones, `VIEW`, admin). Eso permite:
+`FIND` and `SEARCH` compile the `WHERE` clause into a real expression
+tree (AST) in `internal/caimandb/parse/ast.go`, instead of the flat
+left-to-right chaining still used by the rest of the commands
+(`UPDATE`, `DELETE`, `COUNT`, aggregations, `VIEW`, admin). This allows:
 
-- **Paréntesis** para agrupar y forzar precedencia explícita:
+- **Parentheses** for grouping and explicit precedence forcing:
 
   ```sql
   FIND users WHERE (status = "active" OR status = "trial") AND age >= 18
   ```
 
-- **`AND` con más precedencia que `OR`** (como en SQL): en
-  `a = 1 OR b = 2 AND c = 3`, `b = 2 AND c = 3` se evalúa como una
-  unidad antes del `OR`. Antes, sin AST, esta consulta se evaluaba
-  estrictamente de izquierda a derecha y no había forma de expresar la
-  precedencia estándar sin paréntesis explícitos en cada término.
+- **`AND` with higher precedence than `OR`** (like in SQL): in
+  `a = 1 OR b = 2 AND c = 3`, `b = 2 AND c = 3` is evaluated as a
+  unit before the `OR`. Previously, without the AST, this query was
+  evaluated strictly left-to-right and there was no way to express
+  standard precedence without explicit parentheses on every term.
 
-- **`NOT`** delante de una condición o de un grupo:
+- **`NOT`** before a condition or a group:
 
   ```sql
   FIND users WHERE NOT (status = "banned" OR status = "suspended")
   ```
 
-Los operadores de condición (`=`, `LIKE`, `IN`, `BETWEEN`, `IS NULL`,
-...) son los mismos de siempre; lo único nuevo es cómo se combinan.
-Para índices, el planificador de consultas sigue usando la
-lista plana de condiciones de nivel superior cuando el `WHERE` es una
-cadena pura de `AND` (el caso común); si aparece un `OR`, un `NOT` o un
-grupo explícito en el nivel superior, simplemente no hay condición
-única que indexar y se hace *scan* completo -- sigue siendo correcto,
-solo sin ese atajo.
+The condition operators (`=`, `LIKE`, `IN`, `BETWEEN`, `IS NULL`,
+...) are the same as always; the only new thing is how they combine.
+For indexes, the query planner still uses the flat list of top-level
+conditions when the `WHERE` is a pure `AND` chain (the common case);
+if an `OR`, a `NOT` or an explicit group appears at the top level,
+there is simply no single condition to index and a full scan is
+performed — still correct, just without that shortcut.
 
-## Documentos — SEARCH (texto completo)
+## Documents — SEARCH (full-text)
 
 ```sql
 SEARCH articles "search text"
@@ -92,7 +91,7 @@ SEARCH articles "~fuzzy" FUZZY
 SEARCH articles "text" WITH SCORE WITH MATCHES
 ```
 
-## Documentos — UPDATE / DELETE
+## Documents — UPDATE / DELETE
 
 ```sql
 UPDATE users WHERE _id = "abc" SET name = "John", age = 30
@@ -104,7 +103,7 @@ DELETE users WHERE age < 18
 DELETE ALL users
 ```
 
-## Agregaciones y GROUP BY
+## Aggregations and GROUP BY
 
 ```sql
 COUNT users WHERE active = true
@@ -113,26 +112,26 @@ AVG products price
 GROUP orders BY status SUM amount
 ```
 
-Funciones disponibles: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `MEDIAN`,
+Available functions: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `MEDIAN`,
 `MODE`, `STDDEV`.
 
-## Transacciones ACID
+## ACID Transactions
 
 ```sql
 BEGIN mydb users
 INSERT users {"name": "John"}
 COMMIT
--- o ROLLBACK / ABORT
+-- or ROLLBACK / ABORT
 
 TX STATUS
 TX LIST
 TX ISOLATION
 ```
 
-Niveles de aislamiento: `read_committed`, `repeatable_read`
-(por defecto), `serializable`.
+Isolation levels: `read_committed`, `repeatable_read`
+(default), `serializable`.
 
-## JOIN y vistas
+## JOIN and Views
 
 ```sql
 JOIN orders WITH customers ON orders.customer_id = customers._id
@@ -150,7 +149,7 @@ EXPORT users WHERE age > 18 TO "file.csv"
 IMPORT users FROM "file.json"
 ```
 
-## Usuarios, shards y clúster
+## Users, Shards and Cluster
 
 ```sql
 CREATE USER alice PASSWORD "..." ROLE readwrite
@@ -163,12 +162,12 @@ SHARD SCALE mydb 8
 CLUSTER STATUS
 ```
 
-## Navegación / sistema
+## Navigation / System
 
 `PWD`, `LS`, `LS <db>`, `CD <db>`, `TREE`, `STATUS`, `HEALTH`,
 `VERSION`, `PING`, `HELP`, `EXIT` / `QUIT`.
 
-## Operadores de filtro
+## Filter Operators
 
 `=`/`==`, `!=`/`<>`, `>`, `<`, `>=`, `<=`, `LIKE`, `CONTAINS`,
 `EXISTS`, `IN`, `NOT IN`, `BETWEEN`, `STARTS WITH`, `ENDS WITH`,
