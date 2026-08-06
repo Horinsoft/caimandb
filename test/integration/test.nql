@@ -1,52 +1,52 @@
 -- test.nql
 --
--- Regresión para el bug del case "IMPORT" duplicado en dsl_parser.go:
--- al agregar la sintaxis nueva "IMPORT <block> FROM FILE ... [FORMAT ...] [BATCH ...]"
--- (cmd_import.go / handleImportCmd) no se notó que ya existía un
--- "IMPORT <block> <file>" (cmd_admin.go / handleImport), y el switch
--- terminó con dos `case "IMPORT":` -> no compilaba.
+-- Regression test for the duplicate "IMPORT" case bug in dsl_parser.go:
+-- when adding the new syntax "IMPORT <block> FROM FILE ... [FORMAT ...] [BATCH ...]"
+-- (cmd_import.go / handleImportCmd) it wasn't noticed that an
+-- "IMPORT <block> <file>" already existed (cmd_admin.go / handleImport),
+-- and the switch ended up with two `case "IMPORT":` -> wouldn't compile.
 --
--- El fix unifica ambos bajo un único case que decide por sintaxis:
--- si viene "FROM FILE" usa el import streaming nuevo, si no, cae al
--- import legacy de toda la vida. Este script ejercita las dos rutas
--- para que una regresión futura (alguien vuelve a duplicar el case,
--- o rompe el dispatch) se note corriendo:
+-- The fix unifies both under a single case that decides by syntax:
+-- if "FROM FILE" comes, it uses the new streaming import; otherwise it
+-- falls back to the legacy import. This script exercises both paths
+-- so a future regression (someone duplicates the case again, or breaks
+-- the dispatch) will be noticed by running:
 --
 --   go run ./cli run test/integration/test.nql
 --
--- Requiere correrse desde la raíz del repo, ya que las rutas de los
--- fixtures son relativas a test/fixtures/.
+-- Must be run from the repo root, since fixture paths are relative to
+-- test/fixtures/.
 
 CREATE DB test_import_db
 USE test_import_db
 CREATE BLOCK products
 
--- 1) Sanity check: INSERT normal sigue funcionando.
-INSERT products {"name": "Producto suelto", "price": 9.99, "stock": 5, "category": "misc"}
+-- 1) Sanity check: regular INSERT still works.
+INSERT products {"name": "Single product", "price": 9.99, "stock": 5, "category": "misc"}
 COUNT products
 
--- 2) IMPORT legacy: "IMPORT <block> <file>" (handleImport, cmd_admin.go).
---    Usa eng.Import, que carga el archivo entero en memoria. Acepta
---    JSON (array) o CSV.
+-- 2) Legacy IMPORT: "IMPORT <block> <file>" (handleImport, cmd_admin.go).
+--    Uses eng.Import, which loads the entire file into memory. Accepts
+--    JSON (array) or CSV.
 IMPORT products test/fixtures/sample_products.json
 COUNT products
 
--- 3) IMPORT streaming: "IMPORT <block> FROM FILE '<path>' FORMAT NDJSON"
---    (handleImportCmd, cmd_import.go). Antes del fix, este era el
---    segundo `case "IMPORT":` que hacía fallar la compilación.
+-- 3) Streaming IMPORT: "IMPORT <block> FROM FILE '<path>' FORMAT NDJSON"
+--    (handleImportCmd, cmd_import.go). Before the fix, this was the
+--    second `case "IMPORT":` that caused compilation to fail.
 IMPORT products FROM FILE 'test/fixtures/sample_products.ndjson' FORMAT NDJSON
 COUNT products
 
--- 4) Misma ruta streaming pero con BATCH explícito, para ejercitar
---    ese branch del parser de opciones también.
+-- 4) Same streaming path but with explicit BATCH, to exercise that
+--    options parser branch as well.
 IMPORT products FROM FILE 'test/fixtures/sample_products.ndjson' FORMAT NDJSON BATCH 2
 COUNT products
 
--- 5) Errores esperados: mal uso de cada sintaxis debe dar ERROR
---    controlado, no un panic ni confundirse de handler.
+-- 5) Expected errors: misuse of each syntax should give a controlled
+--    ERROR, not a panic or handler confusion.
 IMPORT products FROM FILE
 IMPORT products FROM FILE 'test/fixtures/sample_products.ndjson' FORMAT XML
-IMPORT products FROM FILE 'test/fixtures/no_existe.ndjson' FORMAT NDJSON
+IMPORT products FROM FILE 'test/fixtures/no_such_file.ndjson' FORMAT NDJSON
 
--- Limpieza
+-- Cleanup
 DROP DB test_import_db
