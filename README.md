@@ -9,6 +9,14 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/caimandb/caimandb)](https://goreportcard.com/report/github.com/caimandb/caimandb)
 [![Documentation](https://img.shields.io/badge/docs-reference-blue.svg)](https://caimandb.io/docs)
 
+
+### NQL (Native Query Language)
+
+- **Issue Reporting**: [GitHub Issues](https://github.com/Horinsoft/caimandb/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Horinsoft/caimandb/discussions)
+- **Documentation**: [Project Wiki](https://github.com/Horinsoft/caimandb/wiki)
+- **Website**: [https://caimandb.io](https://caimandb.io)
+
 ---
 
 ## Table of Contents
@@ -381,13 +389,6 @@ WantedBy=multi-user.target
 # Database statistics
 ./bin/caimandb stats
 ```
-
-### NQL (Native Query Language)
-
-- **Issue Reporting**: [GitHub Issues](https://github.com/Horinsoft/caimandb/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Horinsoft/caimandb/discussions)
-- **Documentation**: [Project Wiki](https://github.com/Horinsoft/caimandb/wiki)
-- **Website**: [https://caimandb.io](https://caimandb.io)
 
 ## Documentation
 
