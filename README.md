@@ -1,4 +1,4 @@
-<p align="center"> <img src="https://github.com/Horinsoft/caimandb/blob/main/ui/img/logo.png" alt="CaimanDB Logo" width="200"/> </p>
+<p align="center"> <img src="https://github.com/Horinsoft/caimandb/blob/main/ui/img/logo.png" alt="CaimanDB Logo" width="100%"/> </p>
 
 # CaimanDB
 
