@@ -1,3 +1,5 @@
+https://github.com/Horinsoft/caimandb/blob/main/ui/img/logo.png
+
 # CaimanDB
 
 **Distributed Document-Oriented Database Engine with Native Sharding, Raft-based Clustering, WAL, ACID Transactions, and SQL-like Query Language (NQL).**
