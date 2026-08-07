@@ -1,6 +1,6 @@
 <p align="center"> <img src="https://github.com/Horinsoft/caimandb/blob/main/ui/img/logo.png" alt="CaimanDB Logo" width="100%"/> </p>
 
-# CaimanDB
+# CaimanDB v0.0.1 beta
 
 **Distributed Document-Oriented Database Engine with Native Sharding, Raft-based Clustering, WAL, ACID Transactions, and SQL-like Query Language (NQL).**
 
