@@ -69,27 +69,7 @@
 
 CaimanDB implements a layered architecture with clear separation of concerns:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Presentation Layer                         │
-│                   CLI / HTTP API / WebSocket                    │
-├─────────────────────────────────────────────────────────────────┤
-│                     Processing Layer                            │
-│              NQL Parser / Query Engine / Session Manager        │
-├─────────────────────────────────────────────────────────────────┤
-│                    Coordination Layer                           │
-│      Transaction Manager / Index Manager / Sharding Manager     │
-├─────────────────────────────────────────────────────────────────┤
-│                      Consistency Layer                          │
-│           Raft Consensus Layer / Cluster State Machine          │
-├─────────────────────────────────────────────────────────────────┤
-│                      Persistence Layer                          │
-│                 WAL (Journal) / Storage Engine                  │
-├─────────────────────────────────────────────────────────────────┤
-│                    Physical Storage Layer                       │
-│                      File System / Disk                         │
-└─────────────────────────────────────────────────────────────────┘
-```
+<img src="https://github.com/Horinsoft/caimandb/blob/main/ui/img/database_layered_architecture.png?raw=true" alt="CaimanDB Logo" width="100%"/>
 
 For detailed architecture and disk storage information, refer to [`docs/architecture.md`](docs/architecture.md).
 
