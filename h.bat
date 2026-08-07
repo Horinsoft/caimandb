@@ -15,7 +15,7 @@ echo CREATE DB benchdb
 echo USE benchdb
 echo CREATE BLOCK users
 
-for /L %%i in (1,1,1000000) do (
+for /L %%i in (1,1,100) do (
     echo INSERT users {"id":%%i,"name":"Usuario%%i","email":"usuario%%i@test.com","age":25}
 )
 
